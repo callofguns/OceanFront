@@ -43,6 +43,8 @@ export class UI {
     this.#restoreSettings();
     this.#buildStartScreen();
     this.#bindGlobalInput();
+    this.#bindMobileChrome();
+    this.#bindInstallPrompt();
   }
 
   // ------------------------------------------------------- start screen ---
@@ -226,8 +228,12 @@ export class UI {
 
   #toggleBuildMode(key) {
     this.state.nukeMode = false;
-    this.state.buildMode = this.state.buildMode === key ? null : key;
+    const entering = this.state.buildMode !== key;
+    this.state.buildMode = entering ? key : null;
     this.#refreshModeUi();
+    // Picking a structure means "now go tap the map" -- get the sheet out of
+    // the way so the map underneath it is actually reachable.
+    if (entering) this.#closeSheets();
   }
 
   #toggleNukeMode() {
@@ -236,14 +242,78 @@ export class UI {
       return;
     }
     this.state.buildMode = null;
-    this.state.nukeMode = !this.state.nukeMode;
+    const entering = !this.state.nukeMode;
+    this.state.nukeMode = entering;
     this.#refreshModeUi();
+    if (entering) this.#closeSheets();
   }
 
   cancelModes() {
     this.state.buildMode = null;
     this.state.nukeMode = false;
     this.#refreshModeUi();
+  }
+
+  // ------------------------------------------------------- mobile chrome ---
+
+  /** Wires the phone-width tab bar that turns the three HUD panels into
+   *  dismissible bottom sheets. Harmless no-op on desktop widths, where the
+   *  tab bar and backdrop stay display:none and the panels ignore .is-open. */
+  #bindMobileChrome() {
+    for (const btn of document.querySelectorAll('.tab-btn')) {
+      btn.addEventListener('click', () => {
+        const panel = $(btn.dataset.panel);
+        const wasOpen = panel.classList.contains('is-open');
+        this.#closeSheets();
+        if (!wasOpen) {
+          panel.classList.add('is-open');
+          btn.classList.add('is-active');
+          $('hud').classList.add('has-open-sheet');
+        }
+      });
+    }
+    $('sheet-backdrop').addEventListener('click', () => this.#closeSheets());
+  }
+
+  #closeSheets() {
+    for (const el of document.querySelectorAll('.is-open')) el.classList.remove('is-open');
+    for (const btn of document.querySelectorAll('.tab-btn.is-active')) btn.classList.remove('is-active');
+    $('hud').classList.remove('has-open-sheet');
+  }
+
+  // ------------------------------------------------------ install prompt ---
+
+  /** Chromium's install flow: capture the browser's own prompt and offer it
+   *  through our own banner instead of an unpredictable native UI. iOS Safari
+   *  never fires this event -- there, "Add to Home Screen" stays manual via
+   *  the Share sheet, which the manifest/apple-touch-icon tags already support. */
+  #bindInstallPrompt() {
+    let deferredPrompt = null;
+    const banner = $('install-banner');
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      if (localStorage.getItem('oceanfront.installDismissed') !== '1') banner.hidden = false;
+    });
+
+    $('btn-install').addEventListener('click', async () => {
+      banner.hidden = true;
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      await deferredPrompt.userChoice;
+      deferredPrompt = null;
+    });
+
+    $('btn-install-dismiss').addEventListener('click', () => {
+      banner.hidden = true;
+      try { localStorage.setItem('oceanfront.installDismissed', '1'); } catch { /* fine, just re-asks next visit */ }
+    });
+
+    window.addEventListener('appinstalled', () => {
+      banner.hidden = true;
+      deferredPrompt = null;
+    });
   }
 
   #refreshModeUi() {
@@ -273,18 +343,76 @@ export class UI {
     let lastX = 0;
     let lastY = 0;
 
+    // Pointer Events unify mouse/touch/pen, so single-finger tap-to-attack and
+    // drag-to-pan above already work untouched on phones. Two simultaneous
+    // pointers is a pinch: track both and derive zoom + pan from the pair.
+    const pointers = new Map();
+    let pinchDist = 0;
+    let pinchMidX = 0;
+    let pinchMidY = 0;
+
+    const pinchState = () => {
+      const [a, b] = pointers.values();
+      return {
+        dist: Math.hypot(a.x - b.x, a.y - b.y),
+        x: (a.x + b.x) / 2,
+        y: (a.y + b.y) / 2,
+      };
+    };
+
+    const releasePointer = (id) => {
+      pointers.delete(id);
+      if (pointers.size < 2) pinchDist = 0;
+      if (pointers.size === 1) {
+        // One finger remains after a pinch: resume single-finger panning from
+        // its current position instead of jumping back to a stale lastX/lastY.
+        const [remaining] = pointers.values();
+        pointerDown = true;
+        dragged = true;
+        lastX = remaining.x;
+        lastY = remaining.y;
+      }
+    };
+
     canvas.addEventListener('pointerdown', (e) => {
       if (!this.renderer) return;
+      canvas.setPointerCapture(e.pointerId);
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+      if (pointers.size === 2) {
+        pointerDown = false;
+        dragged = true; // a second finger means this is never a tap
+        canvas.classList.remove('is-panning');
+        const p = pinchState();
+        pinchDist = p.dist;
+        pinchMidX = p.x;
+        pinchMidY = p.y;
+        return;
+      }
+      if (pointers.size > 2) return;
+
       pointerDown = true;
       dragged = false;
       lastX = e.clientX;
       lastY = e.clientY;
-      canvas.setPointerCapture(e.pointerId);
     });
 
     canvas.addEventListener('pointermove', (e) => {
       if (!this.renderer) return;
+      if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       this.state.hoverTile = this.renderer.tileAt(e.clientX, e.clientY);
+
+      if (pointers.size >= 2) {
+        const p = pinchState();
+        if (pinchDist > 0) {
+          this.renderer.pan(p.x - pinchMidX, p.y - pinchMidY);
+          this.renderer.zoomAt(p.x, p.y, p.dist / pinchDist);
+        }
+        pinchDist = p.dist;
+        pinchMidX = p.x;
+        pinchMidY = p.y;
+        return;
+      }
 
       if (!pointerDown) return;
       const dx = e.clientX - lastX;
@@ -302,15 +430,21 @@ export class UI {
 
     canvas.addEventListener('pointerup', (e) => {
       if (!this.renderer) return;
-      pointerDown = false;
-      canvas.classList.remove('is-panning');
-      if (dragged) return;
-      if (e.button === 0) this.#handleClick(this.renderer.tileAt(e.clientX, e.clientY));
+      const wasTap = pointers.size === 1 && !dragged;
+      releasePointer(e.pointerId);
+      if (pointers.size === 0) {
+        pointerDown = false;
+        canvas.classList.remove('is-panning');
+      }
+      if (wasTap && e.button === 0) this.#handleClick(this.renderer.tileAt(e.clientX, e.clientY));
     });
 
-    canvas.addEventListener('pointercancel', () => {
-      pointerDown = false;
-      canvas.classList.remove('is-panning');
+    canvas.addEventListener('pointercancel', (e) => {
+      releasePointer(e.pointerId);
+      if (pointers.size === 0) {
+        pointerDown = false;
+        canvas.classList.remove('is-panning');
+      }
     });
 
     canvas.addEventListener('contextmenu', (e) => {

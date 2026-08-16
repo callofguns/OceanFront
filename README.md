@@ -4,7 +4,8 @@ A real-time territory expansion game for the browser. Claim a homeland on a
 procedurally generated world, grow tile by tile, put your people to work, and
 turn their gold into cities, fleets and warheads until you hold the map.
 
-No build step, no dependencies — plain ES modules and a canvas.
+No build step, no dependencies — plain ES modules and a canvas. Works on
+desktop and phones, and installs as an offline-capable app on either.
 
 ```bash
 npm start          # serves on http://localhost:8080
@@ -69,11 +70,40 @@ decays. The AI plays the same game, including turning on you.
 | `N` | Nuclear strike targeting |
 | Space | Pause |
 
+**On a phone or tablet:** tap to attack, place structures and spawn, same as
+clicking. Drag one finger to pan, pinch with two to zoom. The build menu,
+leaderboard and sliders live behind three tabs at the bottom of the screen —
+tap a tab to open it as a sheet over the map, tap it again (or tap the map)
+to close it. Picking a structure to build closes the sheet automatically so
+the map underneath is reachable to place it.
+
+## Playing as an app
+
+OceanFront is an installable Progressive Web App:
+
+- **Android / desktop Chrome or Edge:** an "Install OceanFront" banner
+  appears automatically after your first visit; accepting adds it as a
+  standalone app with its own icon, no browser chrome.
+- **iOS Safari:** use Share → **Add to Home Screen**. Safari doesn't support
+  the automatic install prompt, but the manifest and icons are set up so the
+  home-screen icon and standalone window work correctly once added.
+
+Once installed (or even just visited once), a service worker (`sw.js`)
+caches every game file, so the match still runs with **no network
+connection at all**. There's nothing to sync — a world is just a seed, and
+the whole simulation runs client-side — so offline play is exactly the same
+game, not a degraded mode. Bump `CACHE_VERSION` in `sw.js` when shipping a
+release that changes any cached file; that busts old installs' caches on
+their next visit.
+
 ## Project layout
 
 ```
 index.html        markup for the HUD, start screen and end screen
-styles.css        all styling
+styles.css        all styling, including the phone/tablet responsive layout
+manifest.json     PWA metadata (name, icons, standalone display)
+sw.js             service worker: offline caching for the whole game
+icons/            app icons generated from the wave-emoji brand mark
 server.js         zero-dependency static file server
 src/
   config.js       every balance constant in one table
@@ -84,8 +114,8 @@ src/
   diplomacy.js    alliances, offers, betrayal and reputation
   ai.js           bot personalities and decision-making
   render.js       camera and canvas drawing
-  ui.js           DOM wiring and input
-  main.js         fixed-timestep game loop
+  ui.js           DOM wiring, input (mouse, touch/pinch), mobile chrome
+  main.js         fixed-timestep game loop, service worker registration
 tools/
   simulate.js     headless all-AI match runner
 ```

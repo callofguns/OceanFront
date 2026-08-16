@@ -80,3 +80,14 @@ function frame(now) {
 }
 
 requestAnimationFrame(frame);
+
+// Registering the service worker makes the game installable and playable
+// offline. It's entirely additive -- if this fails (unsupported browser,
+// file:// origin, etc.) the game just runs online as it always did.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch((err) => {
+      console.warn('Service worker registration failed:', err);
+    });
+  });
+}

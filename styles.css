@@ -15,6 +15,11 @@
   --good: #7ce0a3;
   --radius: 10px;
   --shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+  --tabbar-h: 60px;
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
 }
 
 * { box-sizing: border-box; }
@@ -28,6 +33,7 @@ html, body {
   margin: 0;
   height: 100%;
   overflow: hidden;
+  overscroll-behavior: none;
   background: var(--bg);
   color: var(--ink);
   font: 14px/1.45 "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
@@ -76,9 +82,9 @@ html, body {
 /* ------------------------------------------------------------- top bar --- */
 
 #topbar {
-  top: 10px;
-  left: 10px;
-  right: 10px;
+  top: calc(10px + var(--safe-t));
+  left: calc(10px + var(--safe-l));
+  right: calc(10px + var(--safe-r));
   height: 52px;
   display: flex;
   align-items: center;
@@ -364,7 +370,7 @@ input[type="range"]::-moz-range-thumb {
 
 .banner {
   position: fixed;
-  top: 74px;
+  top: calc(74px + var(--safe-t));
   left: 50%;
   transform: translateX(-50%);
   padding: 9px 20px;
@@ -383,10 +389,46 @@ input[type="range"]::-moz-range-thumb {
    would cover map the player needs to click. */
 #hud.is-spawning #buildpanel,
 #hud.is-spawning #sidepanel,
-#hud.is-spawning #bottombar { display: none; }
+#hud.is-spawning #bottombar,
+#hud.is-spawning #mobile-tabbar { display: none; }
 @keyframes pulse {
   0%, 100% { border-color: var(--edge-strong); }
   50% { border-color: var(--accent); }
+}
+
+.install-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  top: auto;
+  bottom: calc(122px + var(--safe-b));
+  animation: none;
+  max-width: calc(100vw - 32px);
+}
+.install-banner span { font-size: 12.5px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.install-banner button {
+  flex: none;
+  border: 1px solid var(--edge-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+#btn-install {
+  padding: 5px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #04151f;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+#btn-install-dismiss {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: var(--ink-faint);
+  border-color: transparent;
 }
 
 /* ------------------------------------------------------------ overlay --- */
@@ -502,12 +544,122 @@ input[type="range"]::-moz-range-thumb {
 .endstats .k { color: var(--ink-dim); }
 .endstats .v { font-weight: 650; font-variant-numeric: tabular-nums; text-align: right; }
 
+/* --------------------------------------------------------- mobile tabbar - */
+
+#mobile-tabbar {
+  display: none;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: calc(var(--tabbar-h) + var(--safe-b));
+  padding-bottom: var(--safe-b);
+  background: var(--panel-solid);
+  border-top: 1px solid var(--edge);
+  z-index: 42;
+}
+.tab-btn {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border: none;
+  background: transparent;
+  color: var(--ink-faint);
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.tab-icon { font-size: 19px; line-height: 1; }
+.tab-btn.is-active { color: var(--accent); }
+
+#sheet-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 8, 14, 0.55);
+  z-index: 40;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+
 /* ------------------------------------------------------------ responsive - */
 
-@media (max-width: 900px) {
-  #buildpanel { width: 190px; }
-  #sidepanel { width: 200px; }
-  #bottombar { flex-direction: column; gap: 10px; align-items: stretch; }
-  #mode-hint { border-left: none; padding-left: 0; max-width: none; }
+/* Width covers portrait phones; height covers landscape phones -- a wide but
+   short viewport where the three permanent desktop panels would otherwise
+   get crammed into e.g. 390px of vertical space. Real tablets stay well
+   above 500px tall even in landscape, so they're unaffected. */
+@media (max-width: 760px), (max-height: 500px) {
+  #mobile-tabbar { display: flex; }
+  #sheet-backdrop { display: block; }
+  #hud.has-open-sheet #sheet-backdrop { opacity: 1; pointer-events: auto; }
+
+  /* The topbar loses its least essential stat and shrinks to fit small
+     screens; troops, gold and territory are what you actually watch. */
+  .brand span { display: none; }
+  #topbar { gap: 12px; padding: 0 12px; }
+  /* #topbar's children are .brand, then the five .stat blocks in DOM order
+     (Troops, Workers, Population, Gold, Territory), then .spacer/.speed --
+     nth-child counts against all of those, not just the stats, so position 3
+     and 4 are Workers and Population. Troops/Gold/Territory stay visible. */
   .stat:nth-child(3), .stat:nth-child(4) { display: none; }
+  .stat-value { font-size: 14px; }
+  .speed-btn { height: 34px; min-width: 38px; }
+
+  /* buildpanel / sidepanel / bottombar become slide-up sheets, triggered by
+     the tab bar instead of sitting permanently on screen -- on a phone the
+     three of them together are wider than the map. */
+  #buildpanel, #sidepanel, #bottombar {
+    left: 0;
+    right: 0;
+    width: auto;
+    top: auto;
+    bottom: 0;
+    max-height: min(72vh, 560px);
+    padding: 10px 16px calc(16px + var(--tabbar-h) + var(--safe-b));
+    border-radius: 18px 18px 0 0;
+    border-bottom: none;
+    z-index: 41;
+    transform: translateY(100%);
+    transition: transform 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  #buildpanel::before, #sidepanel::before, #bottombar::before {
+    content: "";
+    display: block;
+    width: 36px;
+    height: 4px;
+    margin: 2px auto 10px;
+    border-radius: 2px;
+    background: var(--edge-strong);
+  }
+  #buildpanel.is-open, #sidepanel.is-open, #bottombar.is-open { transform: translateY(0); }
+
+  #sidepanel { max-height: min(72vh, 560px); }
+  #leaderboard { max-height: 34vh; }
+
+  #bottombar { flex-direction: column; align-items: stretch; gap: 14px; }
+  .slider { width: auto; }
+  #mode-hint { border-left: none; padding-left: 0; max-width: none; }
+
+  /* Bigger hit targets everywhere a finger has to land precisely. */
+  .build-btn, .action-btn { min-height: 50px; padding: 10px 12px; }
+  .lb-btn { padding: 5px 10px; font-size: 11.5px; }
+  input[type="range"] { height: 7px; }
+  input[type="range"]::-webkit-slider-thumb { width: 22px; height: 22px; }
+  input[type="range"]::-moz-range-thumb { width: 20px; height: 20px; }
+
+  #toast { bottom: calc(var(--tabbar-h) + var(--safe-b) + 14px); }
+  .install-banner { bottom: calc(var(--tabbar-h) + var(--safe-b) + 14px); }
+}
+
+@media (max-width: 400px) {
+  /* Very narrow phones (iPhone SE and similar): down to Troops + Gold. */
+  #topbar { gap: 8px; padding: 0 8px; }
+  .stat:nth-child(6) { display: none; } /* Territory, the least action-critical of the three left */
+  .speed-btn { min-width: 32px; padding: 0 5px; }
 }

@@ -2,9 +2,19 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>OceanFront</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🌊</text></svg>">
+<meta name="description" content="Claim a coastline, expand tile by tile, and build an empire.">
+<meta name="theme-color" content="#0c1826">
+
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="OceanFront">
+<meta name="mobile-web-app-capable" content="yes">
+
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -93,7 +103,28 @@
     <div id="mode-hint">Click enemy or empty land to attack it.</div>
   </footer>
 
+  <!-- Phones: buildpanel/sidepanel/bottombar above become slide-up sheets,
+       opened by these tabs instead of sitting on screen permanently. -->
+  <nav id="mobile-tabbar">
+    <button type="button" class="tab-btn" data-panel="buildpanel">
+      <span class="tab-icon">🏗</span><span>Build</span>
+    </button>
+    <button type="button" class="tab-btn" data-panel="sidepanel">
+      <span class="tab-icon">🌐</span><span>Nations</span>
+    </button>
+    <button type="button" class="tab-btn" data-panel="bottombar">
+      <span class="tab-icon">⚔</span><span>Orders</span>
+    </button>
+  </nav>
+  <div id="sheet-backdrop"></div>
+
   <div id="toast"></div>
+
+  <div id="install-banner" class="banner install-banner" hidden>
+    <span>Play OceanFront offline</span>
+    <button id="btn-install" type="button">Install</button>
+    <button id="btn-install-dismiss" type="button" aria-label="Dismiss">✕</button>
+  </div>
 </div>
 
 <!-- ============================ start screen ============================ -->
@@ -137,7 +168,7 @@
         <li><b>Scheme:</b> ally with rivals for protection and richer trade — then betray them, if you can afford the reputation.</li>
         <li><b>Win:</b> hold 60% of the world's land.</li>
       </ul>
-      <p class="muted">Drag to pan · scroll to zoom · right-click to cancel a mode · space to pause</p>
+      <p class="muted">Drag to pan · scroll or pinch to zoom · right-click to cancel a mode · space to pause</p>
     </details>
   </div>
 </div>
