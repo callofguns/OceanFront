@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>OceanFront</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🌊</text></svg>">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<canvas id="map"></canvas>
+
+<!-- ============================ in-game HUD ============================ -->
+<div id="hud" hidden>
+
+  <header id="topbar" class="panel">
+    <div class="brand">🌊 <span>OceanFront</span></div>
+    <div class="stat" title="Soldiers available to attack and defend">
+      <span class="stat-label">Troops</span>
+      <span class="stat-value" id="stat-troops">0</span>
+    </div>
+    <div class="stat" title="Civilians producing gold">
+      <span class="stat-label">Workers</span>
+      <span class="stat-value" id="stat-workers">0</span>
+    </div>
+    <div class="stat" title="Population against your current cap">
+      <span class="stat-label">Population</span>
+      <span class="stat-value" id="stat-pop">0</span>
+    </div>
+    <div class="stat gold" title="Treasury and income per second">
+      <span class="stat-label">Gold</span>
+      <span class="stat-value" id="stat-gold">0</span>
+    </div>
+    <div class="stat" title="Share of the world's land you control">
+      <span class="stat-label">Territory</span>
+      <span class="stat-value" id="stat-land">0%</span>
+    </div>
+    <div class="spacer"></div>
+    <div class="speed">
+      <button class="speed-btn" data-speed="0" title="Pause">❚❚</button>
+      <button class="speed-btn is-active" data-speed="1">1×</button>
+      <button class="speed-btn" data-speed="2">2×</button>
+      <button class="speed-btn" data-speed="3">3×</button>
+    </div>
+  </header>
+
+  <aside id="buildpanel" class="panel">
+    <h2>Build</h2>
+    <div id="build-list"></div>
+    <div class="divider"></div>
+    <button id="btn-nuke" class="action-btn danger" disabled>
+      <span class="icon">☢</span>
+      <span class="body">
+        <span class="title">Nuclear Strike</span>
+        <span class="sub" id="nuke-sub">Requires a Missile Silo</span>
+      </span>
+    </button>
+    <button id="btn-retreat" class="action-btn">
+      <span class="icon">⚑</span>
+      <span class="body">
+        <span class="title">Retreat</span>
+        <span class="sub">Recall attacking troops</span>
+      </span>
+    </button>
+  </aside>
+
+  <aside id="sidepanel" class="panel">
+    <h2>Nations</h2>
+    <ol id="leaderboard"></ol>
+    <div class="divider"></div>
+    <h2>Dispatches</h2>
+    <ul id="eventlog"></ul>
+  </aside>
+
+  <footer id="bottombar" class="panel">
+    <label class="slider">
+      <span class="slider-head">
+        <span>Attack force</span>
+        <b id="attack-ratio-value">25%</b>
+      </span>
+      <input type="range" id="attack-ratio" min="5" max="100" step="5" value="25">
+      <span class="slider-hint">Share of troops sent per attack</span>
+    </label>
+    <label class="slider">
+      <span class="slider-head">
+        <span>Troops ↔ Workers</span>
+        <b id="troop-ratio-value">60% troops</b>
+      </span>
+      <input type="range" id="troop-ratio" min="10" max="95" step="5" value="60">
+      <span class="slider-hint">Workers earn gold, troops take land</span>
+    </label>
+    <div id="mode-hint">Click enemy or empty land to attack it.</div>
+  </footer>
+
+  <div id="toast"></div>
+</div>
+
+<!-- ============================ start screen ============================ -->
+<div id="startscreen" class="overlay">
+  <div class="dialog">
+    <h1>🌊 OceanFront</h1>
+    <p class="tagline">
+      Claim a coastline. Expand tile by tile. Put your people to work, and turn
+      their gold into cities, fleets and warheads.
+    </p>
+
+    <div class="field">
+      <label for="name-input">Nation name</label>
+      <input id="name-input" type="text" maxlength="16" value="Player" autocomplete="off">
+    </div>
+
+    <div class="field">
+      <label>Colour</label>
+      <div id="color-picker"></div>
+    </div>
+
+    <div class="field">
+      <label>World size</label>
+      <div id="size-picker" class="choice-row"></div>
+    </div>
+
+    <div class="field">
+      <label for="seed-input">Seed <span class="muted">(same seed, same world)</span></label>
+      <input id="seed-input" type="text" maxlength="12" autocomplete="off">
+    </div>
+
+    <button id="btn-start" class="primary">Set sail</button>
+
+    <details class="help">
+      <summary>How to play</summary>
+      <ul>
+        <li><b>Expand:</b> click any land you don't own to send troops at it. Grey land is cheap; defended land is not.</li>
+        <li><b>Earn:</b> the bottom slider splits your people between troops and gold-earning workers.</li>
+        <li><b>Build:</b> cities raise your population cap, ports earn trade gold, defense posts make your land expensive to take.</li>
+        <li><b>Escalate:</b> silos launch nukes, SAMs shoot them down, and boats carry invasions across the sea.</li>
+        <li><b>Scheme:</b> ally with rivals for protection and richer trade — then betray them, if you can afford the reputation.</li>
+        <li><b>Win:</b> hold 60% of the world's land.</li>
+      </ul>
+      <p class="muted">Drag to pan · scroll to zoom · right-click to cancel a mode · space to pause</p>
+    </details>
+  </div>
+</div>
+
+<!-- =========================== spawn prompt ============================ -->
+<div id="spawnbanner" class="banner" hidden>
+  <b>Choose your homeland</b> — click any unclaimed land to settle.
+</div>
+
+<!-- ============================ end screen ============================= -->
+<div id="endscreen" class="overlay" hidden>
+  <div class="dialog">
+    <h1 id="end-title">Victory</h1>
+    <p id="end-body" class="tagline"></p>
+    <div id="end-stats" class="endstats"></div>
+    <button id="btn-again" class="primary">Play again</button>
+  </div>
+</div>
+
+<script type="module" src="src/main.js"></script>
+</body>
+</html>

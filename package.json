@@ -1,0 +1,14 @@
+{
+  "name": "oceanfront",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A real-time territory expansion strategy game played in the browser.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

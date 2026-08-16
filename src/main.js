@@ -1,0 +1,82 @@
+// Entry point: owns the match lifecycle and the fixed-timestep loop.
+//
+// The simulation advances in whole ticks of TICK_MS regardless of frame rate,
+// so a slow machine sees the same game as a fast one -- it just renders less
+// often. Rendering happens once per animation frame.
+
+import { TICK_MS } from './config.js';
+import { Game } from './game.js';
+import { Renderer } from './render.js';
+import { UI } from './ui.js';
+
+const canvas = document.getElementById('map');
+const ui = new UI(canvas);
+
+let game = null;
+let renderer = null;
+let speed = 1;
+let accumulator = 0;
+let lastFrame = performance.now();
+let endShown = false;
+
+ui.onStart = (options) => {
+  game = new Game(options);
+  renderer = new Renderer(canvas, game);
+  renderer.resize();
+  renderer.fitToScreen();
+
+  accumulator = 0;
+  lastFrame = performance.now();
+  endShown = false;
+  speed = 1;
+
+  ui.attach(game, renderer);
+};
+
+// Debug handle: lets you poke at a live match from the console, and lets
+// automated tests drive the real game instead of a mock.
+window.OceanFront = {
+  get game() { return game; },
+  get renderer() { return renderer; },
+  get ui() { return ui; },
+};
+
+ui.onSpeed = (value) => {
+  speed = value;
+};
+
+window.addEventListener('resize', () => {
+  if (renderer) renderer.resize();
+});
+
+function frame(now) {
+  requestAnimationFrame(frame);
+
+  const elapsed = Math.min(250, now - lastFrame);
+  lastFrame = now;
+
+  if (!game || !renderer) return;
+
+  ui.applyKeyboardPan(elapsed * 0.06);
+
+  if (game.state === 'playing' && speed > 0) {
+    accumulator += elapsed * speed;
+    // Cap catch-up work so a background tab does not freeze on return.
+    let budget = 12;
+    while (accumulator >= TICK_MS && budget-- > 0) {
+      game.tick();
+      accumulator -= TICK_MS;
+    }
+    if (accumulator > TICK_MS * 12) accumulator = 0;
+  }
+
+  renderer.draw(ui.state);
+  ui.refreshHud();
+
+  if (game.state === 'over' && !endShown) {
+    endShown = true;
+    ui.showEndScreen(game);
+  }
+}
+
+requestAnimationFrame(frame);
