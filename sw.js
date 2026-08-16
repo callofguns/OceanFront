@@ -1,11 +1,13 @@
 // Service worker: makes OceanFront installable and playable offline.
 //
-// Everything the game needs is a fixed set of local files with no server
-// calls once loaded, so a simple cache-first strategy is enough -- there is
-// no API data to go stale. Bump CACHE_VERSION on any release that changes
-// shipped files; that busts old caches on the next visit.
+// Network-first, falling back to cache: an online player always gets
+// whatever is actually live (no stale-cache surprises after a deploy), and
+// an offline player gets the last copy that was successfully fetched. Bump
+// CACHE_VERSION on a release that removes/renames files, to drop the old
+// ones from storage -- it is not required for routine updates to propagate,
+// since those are picked up on the very next fetch regardless.
 
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2';
 const CACHE_NAME = `oceanfront-${CACHE_VERSION}`;
 
 const PRECACHE = [
@@ -54,22 +56,23 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return; // no third-party requests exist, but be explicit
 
   event.respondWith(
-    caches.match(req).then((cached) => {
-      if (cached) return cached;
-      return fetch(req)
-        .then((res) => {
-          if (res.ok) {
-            const copy = res.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
-          }
-          return res;
-        })
-        .catch(() => {
-          // Offline and not cached: for navigations, fall back to the shell
-          // so the app still opens instead of showing the browser's error page.
+    fetch(req)
+      .then((res) => {
+        if (res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
+        }
+        return res;
+      })
+      .catch(() =>
+        caches.match(req).then((cached) => {
+          if (cached) return cached;
+          // Offline, nothing cached for this exact request: for navigations,
+          // fall back to the shell so the app still opens instead of showing
+          // the browser's error page.
           if (req.mode === 'navigate') return caches.match('index.html');
           throw new Error('offline and not cached');
-        });
-    })
+        })
+      )
   );
 });

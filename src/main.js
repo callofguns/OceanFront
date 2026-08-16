@@ -86,8 +86,26 @@ requestAnimationFrame(frame);
 // file:// origin, etc.) the game just runs online as it always did.
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch((err) => {
+    // updateViaCache: 'none' stops the browser's own HTTP cache from ever
+    // serving a stale copy of sw.js when checking for updates -- without it,
+    // a fix can ship and still not be detected for a while.
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch((err) => {
       console.warn('Service worker registration failed:', err);
+    });
+
+    // The new service worker activates (skipWaiting + clients.claim) without
+    // waiting for this tab to close, but this tab's already-parsed CSS/JS
+    // won't retroactively change -- so once a new one *replaces an existing
+    // one*, reload once to actually pick up whatever it just fixed. Skip this
+    // on a first-ever install, where there was no prior controller and
+    // nothing to refresh -- claiming a brand new client also fires
+    // controllerchange, and reloading there would just be a pointless flash.
+    const hadControllerAlready = !!navigator.serviceWorker.controller;
+    let reloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadControllerAlready || reloading) return;
+      reloading = true;
+      window.location.reload();
     });
   });
 }
