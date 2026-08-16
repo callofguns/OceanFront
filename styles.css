@@ -24,6 +24,12 @@
 
 * { box-sizing: border-box; }
 
+/* Every clickable control in this UI is a <button>. Without this, touch
+   browsers can burn the tap-delay window deciding whether a tap is the
+   start of a double-tap-to-zoom gesture, which is felt as "buttons need two
+   taps to respond." This tells them to act on a single tap immediately. */
+button { touch-action: manipulation; }
+
 /* Our own `display` rules would otherwise beat the UA stylesheet's
    `[hidden] { display: none }`, leaving hidden overlays stacked over the page
    invisibly eating clicks. */
@@ -127,7 +133,9 @@ html, body {
   font-weight: 600;
   cursor: pointer;
 }
-.speed-btn:hover { border-color: var(--edge-strong); color: var(--ink); }
+@media (hover: hover) {
+  .speed-btn:hover { border-color: var(--edge-strong); color: var(--ink); }
+}
 .speed-btn.is-active {
   background: rgba(79, 195, 247, 0.16);
   border-color: var(--accent);
@@ -161,18 +169,22 @@ html, body {
   cursor: pointer;
   transition: border-color 0.12s, background 0.12s;
 }
-.build-btn:hover:not(:disabled), .action-btn:hover:not(:disabled) {
-  background: rgba(79, 195, 247, 0.1);
-  border-color: var(--edge-strong);
+@media (hover: hover) {
+  .build-btn:hover:not(:disabled), .action-btn:hover:not(:disabled) {
+    background: rgba(79, 195, 247, 0.1);
+    border-color: var(--edge-strong);
+  }
 }
 .build-btn:disabled, .action-btn:disabled { opacity: 0.42; cursor: not-allowed; }
 .build-btn.is-active {
   background: rgba(79, 195, 247, 0.18);
   border-color: var(--accent);
 }
-.action-btn.danger:hover:not(:disabled) {
-  background: rgba(255, 123, 107, 0.14);
-  border-color: var(--danger);
+@media (hover: hover) {
+  .action-btn.danger:hover:not(:disabled) {
+    background: rgba(255, 123, 107, 0.14);
+    border-color: var(--danger);
+  }
 }
 .action-btn.danger.is-active {
   background: rgba(255, 123, 107, 0.22);
@@ -252,8 +264,10 @@ html, body {
   font-weight: 600;
   cursor: pointer;
 }
-.lb-btn:hover { border-color: var(--accent); color: var(--accent); }
-.lb-btn.betray:hover { border-color: var(--danger); color: var(--danger); }
+@media (hover: hover) {
+  .lb-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .lb-btn.betray:hover { border-color: var(--danger); color: var(--danger); }
+}
 .lb-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 .lb-tag { font-size: 11px; flex: none; }
 
@@ -424,8 +438,8 @@ input[type="range"]::-moz-range-thumb {
   border-color: var(--accent);
 }
 #btn-install-dismiss {
-  width: 24px;
-  height: 24px;
+  width: 32px;
+  height: 32px;
   padding: 0;
   color: var(--ink-faint);
   border-color: transparent;
@@ -506,7 +520,9 @@ input[type="range"]::-moz-range-thumb {
   font-size: 12.5px;
   cursor: pointer;
 }
-.choice:hover { border-color: var(--edge-strong); }
+@media (hover: hover) {
+  .choice:hover { border-color: var(--edge-strong); }
+}
 .choice.is-active {
   background: rgba(79, 195, 247, 0.16);
   border-color: var(--accent);
@@ -526,7 +542,9 @@ input[type="range"]::-moz-range-thumb {
   font-weight: 700;
   cursor: pointer;
 }
-.primary:hover { filter: brightness(1.08); }
+@media (hover: hover) {
+  .primary:hover { filter: brightness(1.08); }
+}
 
 .help { margin-top: 18px; font-size: 12.5px; color: var(--ink-dim); }
 .help summary { cursor: pointer; color: var(--ink-faint); }
@@ -609,7 +627,7 @@ input[type="range"]::-moz-range-thumb {
      and 4 are Workers and Population. Troops/Gold/Territory stay visible. */
   .stat:nth-child(3), .stat:nth-child(4) { display: none; }
   .stat-value { font-size: 14px; }
-  .speed-btn { height: 34px; min-width: 38px; }
+  .speed-btn { height: 40px; min-width: 44px; }
 
   /* buildpanel / sidepanel / bottombar become slide-up sheets, triggered by
      the tab bar instead of sitting permanently on screen -- on a phone the
@@ -647,19 +665,30 @@ input[type="range"]::-moz-range-thumb {
   #mode-hint { border-left: none; padding-left: 0; max-width: none; }
 
   /* Bigger hit targets everywhere a finger has to land precisely. */
-  .build-btn, .action-btn { min-height: 50px; padding: 10px 12px; }
-  .lb-btn { padding: 5px 10px; font-size: 11.5px; }
-  input[type="range"] { height: 7px; }
-  input[type="range"]::-webkit-slider-thumb { width: 22px; height: 22px; }
-  input[type="range"]::-moz-range-thumb { width: 20px; height: 20px; }
+  .build-btn, .action-btn { min-height: 52px; padding: 10px 12px; }
+  .lb-row { padding: 7px 2px; gap: 9px; }
+  .lb-btn { min-height: 36px; padding: 0 14px; font-size: 12.5px; }
+  .lb-tag { font-size: 14px; }
+  input[type="range"] { height: 8px; }
+  input[type="range"]::-webkit-slider-thumb { width: 26px; height: 26px; }
+  input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; }
 
   #toast { bottom: calc(var(--tabbar-h) + var(--safe-b) + 14px); }
   .install-banner { bottom: calc(var(--tabbar-h) + var(--safe-b) + 14px); }
+  #btn-install { padding: 8px 16px; font-size: 13px; }
+  #btn-install-dismiss { width: 36px; height: 36px; }
+
+  /* The start screen's own small controls, made finger-sized. */
+  .color-dot { width: 40px; height: 40px; }
+  #color-picker { gap: 10px; }
+  .choice { padding: 13px 8px; }
+  .field input[type="text"] { padding: 12px 13px; }
+  .primary { padding: 15px; }
 }
 
 @media (max-width: 400px) {
   /* Very narrow phones (iPhone SE and similar): down to Troops + Gold. */
   #topbar { gap: 8px; padding: 0 8px; }
   .stat:nth-child(6) { display: none; } /* Territory, the least action-critical of the three left */
-  .speed-btn { min-width: 32px; padding: 0 5px; }
+  .speed-btn { min-width: 38px; padding: 0 6px; }
 }
