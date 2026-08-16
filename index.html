@@ -80,6 +80,11 @@
     <ol id="leaderboard"></ol>
     <div class="divider"></div>
     <h2>Dispatches</h2>
+    <!-- Alliance offers live outside #eventlog on purpose: they contain
+         buttons, and the log below is rebuilt whenever events stream in.
+         Destroying a button between pointerdown and pointerup makes the tap
+         land on an ancestor instead, so the click never reaches it. -->
+    <div id="offers"></div>
     <ul id="eventlog"></ul>
   </aside>
 

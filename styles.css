@@ -256,6 +256,11 @@ html, body {
   font-variant-numeric: tabular-nums;
   color: var(--ink-dim);
   flex: none;
+  /* Reserve room for the widest value ("100.0%"). Without this the share
+     text changes width as the number grows, which slides the button beside
+     it sideways -- out from under a finger that is already resting on it. */
+  min-width: 44px;
+  text-align: right;
 }
 .lb-btn {
   flex: none;
@@ -268,13 +273,20 @@ html, body {
   font-size: 10px;
   font-weight: 600;
   cursor: pointer;
+  /* Fits the longest label ("Betray"/"Accept") so swapping labels never
+     resizes the button under a finger. */
+  min-width: 52px;
+  text-align: center;
 }
 @media (hover: hover) {
   .lb-btn:hover { border-color: var(--accent); color: var(--accent); }
   .lb-btn.betray:hover { border-color: var(--danger); color: var(--danger); }
 }
 .lb-btn:disabled { opacity: 0.35; cursor: not-allowed; }
-.lb-tag { font-size: 11px; flex: none; }
+/* Always occupies its slot, so a nation earning (or shedding) the traitor
+   mark never reflows the row and shifts the button next to it. */
+.lb-tag { font-size: 11px; flex: none; width: 14px; text-align: center; }
+.lb-tag.is-empty { visibility: hidden; }
 
 #eventlog {
   list-style: none;
@@ -673,7 +685,7 @@ input[type="range"]::-moz-range-thumb {
   /* Bigger hit targets everywhere a finger has to land precisely. */
   .build-btn, .action-btn { min-height: 52px; padding: 10px 12px; }
   .lb-row { padding: 7px 2px; gap: 9px; }
-  .lb-btn { min-height: 36px; padding: 0 14px; font-size: 12.5px; }
+  .lb-btn { min-height: 36px; padding: 0 14px; font-size: 12.5px; min-width: 76px; }
   .lb-tag { font-size: 14px; }
   input[type="range"] { height: 8px; }
   input[type="range"]::-webkit-slider-thumb { width: 26px; height: 26px; }

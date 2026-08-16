@@ -15,6 +15,8 @@ import { formatShort } from './render.js';
 
 const HUD_INTERVAL_MS = 120;
 const DRAG_THRESHOLD = 4;
+/** How often the leaderboard is allowed to re-sort itself. */
+const REORDER_INTERVAL_MS = 1000;
 
 const $ = (id) => document.getElementById(id);
 
@@ -40,6 +42,15 @@ export class UI {
     this.lastHudAt = 0;
     this.toastTimer = null;
 
+    /** Reused DOM per nation / per offer -- see #refreshLeaderboard for why. */
+    this.lbRows = new Map();
+    this.offerRows = new Map();
+    this.lastEventSignature = null;
+    /** True while any finger/mouse button is down anywhere on the page. */
+    this.pointerIsDown = false;
+    this.pointerOverLeaderboard = false;
+    this.lastReorderAt = 0;
+
     this.#restoreSettings();
     this.#buildStartScreen();
     this.#bindGlobalInput();
@@ -51,6 +62,34 @@ export class UI {
     // ever removed the previous set; a toggle button wired twice fires twice
     // per tap and can cancel itself out.)
     this.#bindHudControls();
+    this.#trackPointerState();
+  }
+
+  /** Lets the HUD know not to rearrange itself out from under a finger. */
+  #trackPointerState() {
+    const down = () => { this.pointerIsDown = true; };
+    const up = () => { this.pointerIsDown = false; };
+    document.addEventListener('pointerdown', down, true);
+    document.addEventListener('pointerup', up, true);
+    document.addEventListener('pointercancel', up, true);
+    window.addEventListener('blur', up);
+
+    const list = $('leaderboard');
+    list.addEventListener('pointerenter', () => { this.pointerOverLeaderboard = true; });
+    list.addEventListener('pointerleave', () => { this.pointerOverLeaderboard = false; });
+  }
+
+  /**
+   * True when the player is plausibly aiming at the leaderboard: a pointer is
+   * down, the cursor is over the list, or the Nations sheet is open (which on
+   * a phone is only ever opened deliberately, to act on a nation).
+   */
+  get #leaderboardIsBusy() {
+    return (
+      this.pointerIsDown ||
+      this.pointerOverLeaderboard ||
+      $('sidepanel').classList.contains('is-open')
+    );
   }
 
   // ------------------------------------------------------- start screen ---
@@ -142,6 +181,15 @@ export class UI {
     this.renderer = renderer;
     this.state.buildMode = null;
     this.state.nukeMode = false;
+
+    // A new match means new nations, so the reused rows from the last one are
+    // stale -- drop them and let them be recreated on the next refresh.
+    this.lbRows.clear();
+    this.offerRows.clear();
+    this.lastEventSignature = null;
+    $('leaderboard').replaceChildren();
+    $('offers').replaceChildren();
+    $('eventlog').replaceChildren();
 
     $('startscreen').hidden = true;
     $('hud').hidden = false;
@@ -633,146 +681,280 @@ export class UI {
       const { btn, cost } = this.buildButtons[key];
       const price = this.game.costFor(human, key);
       const owned = human.countOf(key);
-      cost.textContent = owned > 0 ? `${formatShort(price)} ·${owned}` : formatShort(price);
+      const text = owned > 0 ? `${formatShort(price)} ·${owned}` : formatShort(price);
+      if (cost.textContent !== text) cost.textContent = text;
       cost.classList.toggle('unaffordable', human.gold < price);
-      btn.disabled = false;
+      // Build buttons are never disabled -- affordability is shown in the
+      // cost colour instead, and the Game rejects an unaffordable placement
+      // with a toast that explains why.
+      if (btn.disabled) btn.disabled = false;
     }
   }
 
   #refreshNukeButton(human) {
     const btn = $('btn-nuke');
     const hasSilo = this.game.canNuke(human);
-    btn.disabled = !hasSilo || human.gold < NUKE_COST;
-    $('nuke-sub').textContent = hasSilo
-      ? `${formatShort(NUKE_COST)} gold`
-      : 'Requires a Missile Silo';
-    if (!btn.disabled) return;
+    const disabled = !hasSilo || human.gold < NUKE_COST;
+    // Only assign on a real change: gold hovering around the warhead price
+    // would otherwise flip `disabled` mid-tap and cancel the click.
+    if (btn.disabled !== disabled) btn.disabled = disabled;
+    const sub = hasSilo ? `${formatShort(NUKE_COST)} gold` : 'Requires a Missile Silo';
+    if ($('nuke-sub').textContent !== sub) $('nuke-sub').textContent = sub;
+    if (!disabled) return;
     if (this.state.nukeMode) this.cancelModes();
   }
 
+  /**
+   * Updates the leaderboard in place, reusing one row (and one button) per
+   * nation for as long as it is listed.
+   *
+   * This runs ~8x/second. Rebuilding the rows each time -- which is what it
+   * used to do -- meant a button could be destroyed between a finger's
+   * pointerdown and pointerup; the browser then dispatches `click` on the
+   * nearest common ancestor rather than the button, so the handler never
+   * fires and the tap is silently lost. That is why buttons "needed several
+   * tries" on touch.
+   */
   #refreshLeaderboard(game, human) {
     const list = $('leaderboard');
     const rows = game.standings().slice(0, 12);
-    list.replaceChildren();
+    const seen = new Set();
 
-    for (const p of rows) {
-      const li = document.createElement('li');
-      li.className = 'lb-row' + (p.isHuman ? ' is-you' : '');
+    // Standings shuffle constantly in a busy match. Re-sorting on every
+    // refresh makes the list jitter, and a row that slides away between
+    // aiming and tapping means acting on the wrong nation. So: never reorder
+    // while the player is engaging with the list, and otherwise no more than
+    // once a second. The displayed values still update live throughout; only
+    // the row order is held still.
+    const now = performance.now();
+    const mayReorder = !this.#leaderboardIsBusy && now - this.lastReorderAt > REORDER_INTERVAL_MS;
+    if (mayReorder) this.lastReorderAt = now;
 
-      const swatch = document.createElement('span');
-      swatch.className = 'lb-swatch';
-      swatch.style.background = p.color;
-
-      const name = document.createElement('span');
-      name.className = 'lb-name';
-      name.textContent = p.name;
-
-      const share = document.createElement('span');
-      share.className = 'lb-share';
-      share.textContent = `${(game.landShare(p) * 100).toFixed(1)}%`;
-
-      li.append(swatch, name, share);
-
-      if (p.traitorScore >= 1) {
-        const tag = document.createElement('span');
-        tag.className = 'lb-tag';
-        tag.textContent = '🗡';
-        tag.title = 'Has betrayed an ally';
-        li.appendChild(tag);
+    rows.forEach((p, index) => {
+      seen.add(p.id);
+      let row = this.lbRows.get(p.id);
+      if (!row) {
+        row = this.#createLeaderboardRow(p);
+        this.lbRows.set(p.id, row);
       }
+      this.#updateLeaderboardRow(row, game, human, p);
 
-      if (!p.isHuman) li.appendChild(this.#diplomacyButton(game, human, p));
-      list.appendChild(li);
+      // Only touch the DOM position when the order actually changed -- and
+      // never while a finger is down. Standings re-sort several times a
+      // second, and a row sliding out from under a tap both loses the click
+      // and makes the player hit the wrong nation. Order catches up the
+      // moment they lift off.
+      if (mayReorder && list.children[index] !== row.li) {
+        list.insertBefore(row.li, list.children[index] || null);
+      } else if (!row.li.isConnected) {
+        // A brand new row still has to be inserted, whatever the throttle says.
+        list.appendChild(row.li);
+      }
+    });
+
+    if (!mayReorder) return; // don't yank a row out from under a tap
+    for (const [id, row] of this.lbRows) {
+      if (seen.has(id)) continue;
+      row.li.remove();
+      this.lbRows.delete(id);
     }
   }
 
-  #diplomacyButton(game, human, other) {
-    const dip = game.diplomacy;
+  #createLeaderboardRow(player) {
+    const li = document.createElement('li');
+    li.className = 'lb-row';
+
+    const swatch = document.createElement('span');
+    swatch.className = 'lb-swatch';
+
+    const name = document.createElement('span');
+    name.className = 'lb-name';
+
+    const share = document.createElement('span');
+    share.className = 'lb-share';
+
+    const tag = document.createElement('span');
+    tag.className = 'lb-tag';
+    tag.textContent = '🗡';
+    tag.title = 'Has betrayed an ally';
+
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'lb-btn';
+    // A single listener for the life of the row. It resolves what the action
+    // means from live game state at click time, so changing the button's
+    // label never requires replacing the element (and losing taps).
+    btn.addEventListener('click', () => this.#onDiplomacyAction(player.id));
 
-    if (human.allies.has(other.id)) {
-      btn.classList.add('betray');
-      btn.textContent = 'Betray';
-      const allowed = dip.canBreak(human.id, other.id);
-      btn.disabled = !allowed;
-      btn.title = allowed
-        ? 'Break the pact. Other nations will trust you less.'
-        : 'The pact is too fresh to break.';
-      btn.addEventListener('click', () => {
-        dip.breakAlliance(human.id, other.id);
-        this.refreshHud(true);
-      });
-      return btn;
+    li.append(swatch, name, share, tag, btn);
+    return { li, swatch, name, share, tag, btn };
+  }
+
+  #updateLeaderboardRow(row, game, human, p) {
+    const { li, swatch, name, share, tag, btn } = row;
+
+    li.classList.toggle('is-you', p.isHuman);
+    if (swatch.style.background !== p.color) swatch.style.background = p.color;
+    if (name.textContent !== p.name) name.textContent = p.name;
+
+    const shareText = `${(game.landShare(p) * 100).toFixed(1)}%`;
+    if (share.textContent !== shareText) share.textContent = shareText;
+
+    // Kept in the layout either way (visibility, not display) so the row
+    // never reflows and nudges the button sideways mid-tap.
+    tag.classList.toggle('is-empty', p.traitorScore < 1);
+
+    if (p.isHuman) {
+      btn.hidden = true;
+      return;
+    }
+    btn.hidden = false;
+
+    const dip = game.diplomacy;
+    let label;
+    let disabled = false;
+    let betray = false;
+    let title = '';
+
+    if (human.allies.has(p.id)) {
+      label = 'Betray';
+      betray = true;
+      disabled = !dip.canBreak(human.id, p.id);
+      title = disabled
+        ? 'The pact is too fresh to break.'
+        : 'Break the pact. Other nations will trust you less.';
+    } else {
+      const pending = dip.pendingBetween(human.id, p.id);
+      if (pending) {
+        const mine = pending.from === human.id;
+        label = mine ? 'Sent' : 'Accept';
+        disabled = mine;
+        title = mine ? 'Waiting for their answer.' : 'Accept their alliance offer.';
+      } else {
+        label = 'Ally';
+        title = 'Propose a non-aggression pact and open trade';
+      }
     }
 
-    const pending = dip.pendingBetween(human.id, other.id);
+    if (btn.textContent !== label) btn.textContent = label;
+    // Assign `disabled` only on a real change: flipping it while a finger is
+    // down would cancel that tap outright.
+    if (btn.disabled !== disabled) btn.disabled = disabled;
+    btn.classList.toggle('betray', betray);
+    if (btn.title !== title) btn.title = title;
+  }
+
+  /** Resolves the current meaning of a nation's diplomacy button and acts. */
+  #onDiplomacyAction(otherId) {
+    const game = this.game;
+    if (!game || game.state !== 'playing') return;
+    const human = game.human;
+    const other = game.players[otherId];
+    if (!other?.alive) return;
+    const dip = game.diplomacy;
+
+    if (human.allies.has(otherId)) {
+      if (!dip.canBreak(human.id, otherId)) return;
+      dip.breakAlliance(human.id, otherId);
+      this.refreshHud(true);
+      return;
+    }
+
+    const pending = dip.pendingBetween(human.id, otherId);
     if (pending) {
-      btn.textContent = pending.from === human.id ? 'Sent' : 'Accept';
-      btn.disabled = pending.from === human.id;
-      if (pending.to === human.id) {
-        btn.addEventListener('click', () => {
-          dip.accept(pending);
-          this.refreshHud(true);
-        });
-      }
-      return btn;
+      if (pending.to !== human.id) return; // ours, still awaiting their answer
+      dip.accept(pending);
+      this.refreshHud(true);
+      return;
     }
 
-    btn.textContent = 'Ally';
-    btn.title = 'Propose a non-aggression pact and open trade';
-    btn.addEventListener('click', () => {
-      if (dip.propose(human.id, other.id)) {
-        this.toast(`Alliance offered to ${other.name}.`);
-        this.refreshHud(true);
-      }
-    });
-    return btn;
+    if (dip.propose(human.id, otherId)) {
+      this.toast(`Alliance offered to ${other.name}.`);
+      this.refreshHud(true);
+    }
   }
 
   #refreshEvents(game) {
+    this.#refreshOffers(game);
+
+    // The log is pure text with nothing clickable in it, so rebuilding is
+    // harmless -- but still only do it when the content actually changed.
+    const events = game.events.slice(0, 14);
+    const signature = events.map((e) => `${e.tick}:${e.text}`).join('|');
+    if (signature === this.lastEventSignature) return;
+    this.lastEventSignature = signature;
+
     const log = $('eventlog');
     log.replaceChildren();
-
-    // Offers awaiting the player's answer sit above the feed.
-    for (const offer of game.diplomacy.offersTo(game.human.id)) {
-      const from = game.players[offer.from];
-      const li = document.createElement('li');
-      const box = document.createElement('div');
-      box.className = 'offer';
-
-      const text = document.createElement('span');
-      text.className = 'offer-text';
-      text.textContent = `${from.name} offers an alliance`;
-
-      const yes = document.createElement('button');
-      yes.className = 'lb-btn';
-      yes.textContent = 'Accept';
-      yes.addEventListener('click', () => {
-        game.diplomacy.accept(offer);
-        this.refreshHud(true);
-      });
-
-      const no = document.createElement('button');
-      no.className = 'lb-btn betray';
-      no.textContent = 'Decline';
-      no.addEventListener('click', () => {
-        game.diplomacy.decline(offer);
-        this.refreshHud(true);
-      });
-
-      box.append(text, yes, no);
-      li.appendChild(box);
-      log.appendChild(li);
-    }
-
-    for (const event of game.events.slice(0, 14)) {
+    for (const event of events) {
       const li = document.createElement('li');
       li.textContent = event.text;
       li.style.color = event.color;
       log.appendChild(li);
     }
+  }
+
+  /**
+   * Alliance offers, kept in their own container and keyed by sender so an
+   * offer's Accept/Decline buttons survive across refreshes. Rebuilding these
+   * on a timer would make them just as untappable as the leaderboard was.
+   */
+  #refreshOffers(game) {
+    const box = $('offers');
+    const offers = game.diplomacy.offersTo(game.human.id);
+    const seen = new Set();
+
+    offers.forEach((offer, index) => {
+      seen.add(offer.from);
+      let row = this.offerRows.get(offer.from);
+      if (!row) {
+        row = this.#createOfferRow(offer.from);
+        this.offerRows.set(offer.from, row);
+      }
+      const fromName = game.players[offer.from]?.name ?? 'A nation';
+      const text = `${fromName} offers an alliance`;
+      if (row.text.textContent !== text) row.text.textContent = text;
+      if (box.children[index] !== row.el) box.insertBefore(row.el, box.children[index] || null);
+    });
+
+    for (const [fromId, row] of this.offerRows) {
+      if (seen.has(fromId)) continue;
+      row.el.remove();
+      this.offerRows.delete(fromId);
+    }
+  }
+
+  #createOfferRow(fromId) {
+    const el = document.createElement('div');
+    el.className = 'offer';
+
+    const text = document.createElement('span');
+    text.className = 'offer-text';
+
+    const yes = document.createElement('button');
+    yes.type = 'button';
+    yes.className = 'lb-btn';
+    yes.textContent = 'Accept';
+    yes.addEventListener('click', () => {
+      const offer = this.game?.diplomacy.offersTo(this.game.human.id).find((o) => o.from === fromId);
+      if (!offer) return;
+      this.game.diplomacy.accept(offer);
+      this.refreshHud(true);
+    });
+
+    const no = document.createElement('button');
+    no.type = 'button';
+    no.className = 'lb-btn betray';
+    no.textContent = 'Decline';
+    no.addEventListener('click', () => {
+      const offer = this.game?.diplomacy.offersTo(this.game.human.id).find((o) => o.from === fromId);
+      if (!offer) return;
+      this.game.diplomacy.decline(offer);
+      this.refreshHud(true);
+    });
+
+    el.append(text, yes, no);
+    return { el, text };
   }
 
   #refreshAttackHint(game, human) {
