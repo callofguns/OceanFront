@@ -92,6 +92,11 @@ html, body {
   left: calc(10px + var(--safe-l));
   right: calc(10px + var(--safe-r));
   height: 52px;
+  /* Without this, #topbar (z-index: auto) paints *under* the mobile sheet
+     backdrop (z-index: 40) once a menu is open, so a tap meant for e.g. the
+     pause button lands on the backdrop instead -- it closes the menu and
+     eats the tap, and the button needs a second, separate tap to work. */
+  z-index: 43;
   display: flex;
   align-items: center;
   gap: 22px;
@@ -604,6 +609,7 @@ input[type="range"]::-moz-range-thumb {
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.2s;
+  touch-action: manipulation;
 }
 
 /* ------------------------------------------------------------ responsive - */

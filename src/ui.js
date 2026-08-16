@@ -45,6 +45,12 @@ export class UI {
     this.#bindGlobalInput();
     this.#bindMobileChrome();
     this.#bindInstallPrompt();
+    // Static elements that live for the page's whole lifetime, not per
+    // match -- bound exactly once here. (Binding these from attach() instead
+    // would stack a fresh set of listeners on every replay, since nothing
+    // ever removed the previous set; a toggle button wired twice fires twice
+    // per tap and can cancel itself out.)
+    this.#bindHudControls();
   }
 
   // ------------------------------------------------------- start screen ---
@@ -144,7 +150,6 @@ export class UI {
     $('endscreen').hidden = true;
 
     this.#buildBuildMenu();
-    this.#bindHudControls();
     this.#syncSliders();
     this.refreshHud(true);
   }
@@ -272,7 +277,20 @@ export class UI {
         }
       });
     }
-    $('sheet-backdrop').addEventListener('click', () => this.#closeSheets());
+
+    // Click-outside-to-close: the backdrop's own job is purely visual (the
+    // dimming) plus physically blocking a tap on the visible map sliver from
+    // also reaching the canvas underneath (it sits above the map in z-index,
+    // below the sheets and tab bar). The actual "was this outside the open
+    // sheet" decision is made once, here, at the document level, so it
+    // reliably covers the backdrop *and* anything else outside the sheet.
+    document.addEventListener('click', (e) => {
+      const openPanel = document.querySelector('#buildpanel.is-open, #sidepanel.is-open, #bottombar.is-open');
+      if (!openPanel) return;
+      if (openPanel.contains(e.target)) return;
+      if (e.target.closest('.tab-btn')) return; // that button's own handler decides what happens
+      this.#closeSheets();
+    });
   }
 
   #closeSheets() {
