@@ -12,6 +12,7 @@ import {
   ATTACK_TILES_PER_TROOP,
   ATTACK_MAX_TILES,
   ATTACK_MIN_TROOPS,
+  FRONTIER_SAMPLE_SIZE,
   RETREAT_REFUND,
   BUILDINGS,
   buildingCost,
@@ -362,7 +363,7 @@ export class Game {
 
     let taken = 0;
     while (taken < budget && attack.frontier.length > 0) {
-      const r = Math.floor(this.rng() * attack.frontier.length);
+      const r = this.#pickFrontierTile(attack);
       const tile = attack.frontier[r];
 
       // Stale entry: the tile changed hands since it was queued.
@@ -402,6 +403,52 @@ export class Game {
       attack.troops = 0;
       attack.done = true;
     }
+  }
+
+  /**
+   * Chooses which frontier tile to take next. Samples a handful of random
+   * candidates and prefers whichever is most enclosed by the attacker's own
+   * territory -- that's what a stray unclaimed hole looks like once it's
+   * boxed in, so this closes it immediately instead of leaving it to lose
+   * the flat random draw indefinitely. It also produces a solid, rounded
+   * front rather than a spiky one, since a tile with several owned neighbours
+   * is by definition filling in a notch rather than reaching for a new one.
+   *
+   * Affordable candidates always outrank unaffordable ones, regardless of
+   * enclosure: without that, one expensive-but-highly-enclosed tile (a lone
+   * mountain, say) would keep winning the sample and starve out every
+   * cheaper tile elsewhere on the frontier, tripping the fails-counter and
+   * ending the attack early with plenty of easy land still unclaimed.
+   */
+  #pickFrontierTile(attack) {
+    const frontier = attack.frontier;
+    const nb = this._nb;
+    const attempts = Math.min(FRONTIER_SAMPLE_SIZE, frontier.length);
+
+    let bestIndex = -1;
+    let bestScore = -Infinity;
+
+    for (let i = 0; i < attempts; i++) {
+      const idx = Math.floor(this.rng() * frontier.length);
+      const tile = frontier[idx];
+      // A stale entry can't be scored meaningfully; leave it for the caller's
+      // existing cleanup rather than letting it win by default.
+      if (this.owner[tile] !== attack.targetId || this.map.terrain[tile] === OCEAN) continue;
+
+      const n = this.map.neighbors(tile, nb);
+      let enclosed = 0;
+      for (let k = 0; k < n; k++) {
+        if (this.owner[nb[k]] === attack.attackerId) enclosed++;
+      }
+      const affordable = attack.troops >= this.tileCost(tile, attack.targetId);
+      const score = (affordable ? 1000 : 0) + enclosed;
+      if (score > bestScore) {
+        bestScore = score;
+        bestIndex = idx;
+      }
+    }
+
+    return bestIndex === -1 ? Math.floor(this.rng() * frontier.length) : bestIndex;
   }
 
   #removeFrontier(attack, index) {

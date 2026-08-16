@@ -14,16 +14,16 @@ export const MOUNTAIN = 3;
 export const TERRAIN_NAMES = ['Ocean', 'Plains', 'Highland', 'Mountain'];
 
 // Flat troop cost of stepping onto the tile, before defender strength.
-export const TERRAIN_COST = [Infinity, 1.0, 2.4, 4.8];
+export const TERRAIN_COST = [Infinity, 1.0, 2.0, 3.6];
 // Multiplier applied to the whole tile cost -- rough ground defends itself.
-export const TERRAIN_DEFENSE = [1, 1.0, 1.25, 1.6];
+export const TERRAIN_DEFENSE = [1, 1.0, 1.15, 1.4];
 
 // ----------------------------------------------------------------- combat ---
 
 /** Effective troops-per-tile that unclaimed land defends itself with. */
-export const NEUTRAL_DENSITY = 2.6;
+export const NEUTRAL_DENSITY = 1.7;
 /** How much a defender's troop density is worth per tile. */
-export const DEFENDER_STRENGTH = 1.9;
+export const DEFENDER_STRENGTH = 1.5;
 /** Fraction of a defender's per-tile density that dies when a tile falls. */
 export const DEFENDER_LOSS = 0.85;
 /** Attacks conquer at least this many tiles per tick... */
@@ -35,6 +35,15 @@ export const ATTACK_MAX_TILES = 150;
 export const RETREAT_REFUND = 0.75;
 /** An attack with fewer troops than this fizzles out. */
 export const ATTACK_MIN_TROOPS = 8;
+/**
+ * How many frontier tiles are sampled before picking one to take. Picking
+ * purely at random leaves stray unclaimed holes behind (a tile can go a long
+ * time without winning the lottery even once it is boxed in on every side)
+ * and gives conquered territory a ragged, spiky outline. Sampling a handful
+ * and preferring the most enclosed one instead keeps the front solid and
+ * closes in on gaps as soon as they open up.
+ */
+export const FRONTIER_SAMPLE_SIZE = 6;
 
 // ---------------------------------------------------------------- economy ---
 
