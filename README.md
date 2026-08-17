@@ -4,8 +4,10 @@ A real-time territory expansion game for the browser. Claim a homeland on a
 procedurally generated world, grow tile by tile, put your people to work, and
 turn their gold into cities, fleets and warheads until you hold the map.
 
-No build step, no dependencies — plain ES modules and a canvas. Works on
-desktop and phones, and installs as an offline-capable app on either.
+No build step, no runtime dependencies — plain ES modules and a canvas. Works
+on desktop and phones, and installs as an offline-capable app on either.
+(Playwright is a devDependency used only by the test suite; see
+`tools/tests/README.md`.)
 
 ```bash
 npm start          # serves on http://localhost:8080
@@ -134,6 +136,7 @@ src/
   main.js         fixed-timestep game loop, service worker registration
 tools/
   simulate.js     headless all-AI match runner
+  tests/          committed regression suite -- see tools/tests/README.md
 ```
 
 The simulation is deliberately separate from rendering. `src/game.js` never
@@ -157,6 +160,19 @@ fastest way to see whether a change to `config.js` ruins the game.
 Typical healthy run: a winner in 8–16 game-minutes, all five structure types
 built, alliances peaking mid-game and collapsing as nations run out of room,
 and average tick times well under a millisecond.
+
+## Testing
+
+```bash
+npm install && npm test
+```
+
+Runs the full committed regression suite (desktop and mobile browser flows,
+touch reliability, encirclement correctness, PWA install) against a real
+Chromium instance via Playwright. See `tools/tests/README.md` for what each
+script covers and how to run one in isolation.
+
+New to this project? Read `HANDOFF.md` first.
 
 ## Notes
 
