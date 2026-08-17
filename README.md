@@ -26,10 +26,26 @@ defender's troop density and the terrain: open plains are cheap, mountains are
 brutal. Unclaimed grey land is the cheapest thing on the map, which is why the
 opening minutes are a land grab.
 
-**Earning.** Population splits between troops and workers on the bottom slider.
-Workers generate gold and nothing else; troops take and hold ground and generate
-nothing. Sitting at 90% troops makes you dangerous and poor. Sitting at 20%
-makes you rich and someone else's next meal.
+**Earning.** Population splits between troops and workers on the bottom slider,
+anywhere from 25% to 75% either way. Workers generate gold and nothing else;
+troops take and hold ground and generate nothing. Sitting near 75% troops makes
+you dangerous and poor. Sitting near 25% makes you rich and someone else's next
+meal.
+
+Land and gold pull on different levers, and deliberately do not overlap.
+Territory is the *military* engine: every tile raises your population ceiling
+and speeds up how fast that population regrows, so a wide nation rebuilds a
+shattered army far quicker than a small one can. Territory pays no gold at all.
+Gold comes from workers, cities, ports and trade — getting rich means putting
+people to work and building something, not simply sprawling.
+
+**Surrounding.** Anything completely boxed in by a single nation falls to it for
+free; once you have surrounded something there is no fight left to have. An
+unclaimed pocket is judged on its land neighbours alone, so stray holes inside
+your borders get filled in. A whole *nation* has to be genuinely landlocked —
+any coast at all and it can still ship an army out, so the sea is a real escape
+route. Annexing a nation this way hands you its entire treasury; taking a
+nation's last tile in ordinary combat hands you half.
 
 **Building.** Gold buys structures, each of which raises a different ceiling:
 
@@ -110,7 +126,7 @@ src/
   rng.js          seeded RNG and value noise
   map.js          island generation, ocean labelling, spawn selection
   player.js       population, troop/worker split, income
-  game.js         tick loop, combat, boats, missiles, buildings, trade
+  game.js         tick loop, combat, encirclement, boats, missiles, trade
   diplomacy.js    alliances, offers, betrayal and reputation
   ai.js           bot personalities and decision-making
   render.js       camera and canvas drawing

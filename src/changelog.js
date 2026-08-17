@@ -2,9 +2,18 @@
 // main menu. CURRENT_VERSION drives the visible tag -- bump it whenever a
 // new entry is added below. Newest first.
 
-export const CURRENT_VERSION = 'v1.2.0-beta';
+export const CURRENT_VERSION = 'v1.3.0-beta';
 
 export const CHANGELOG = [
+  {
+    version: 'v1.3.0-beta',
+    notes: [
+      'Land is now your army: every tile you hold speeds up how fast troops regrow, so a wide nation rebuilds a shattered army far quicker than a small one.',
+      'Territory no longer pays gold. Income comes from workers, cities, ports and trade — getting rich means building something, not just sprawling.',
+      'Anything you completely surround falls to you for free. Unclaimed pockets inside your borders get filled in; a landlocked nation ringed by you alone is annexed outright.',
+      'Annexing a nation by surrounding it hands you its entire treasury. Taking a nation’s last tile in ordinary combat hands you half.',
+    ],
+  },
   {
     version: 'v1.2.0-beta',
     notes: [

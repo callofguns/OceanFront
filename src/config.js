@@ -53,6 +53,20 @@ export const POP_PER_TILE = 4.2;
 export const POP_GROWTH = 0.075;
 /** Flat growth floor so tiny nations can still recover, per second. */
 export const POP_BASE_GROWTH = 8;
+/**
+ * Population growth per second contributed by each tile held. Land already
+ * sets the population *ceiling* (POP_PER_TILE, above); this ties it to the
+ * *rate* as well, so a wide nation refills its army quickly after a war
+ * instead of merely being able to hold a larger one. Growth is still split
+ * by the troops/workers slider, so with the slider anywhere near its default
+ * this reads in practice as "more land, faster troops".
+ *
+ * Note this deliberately feeds population growth rather than adding troops
+ * directly: the MIGRATE_RATE rebalancer below continuously pulls the split
+ * back toward the slider's ratio, so troops bolted on outside that flow just
+ * leak away into workers again over the following seconds.
+ */
+export const LAND_GROWTH = 0.03;
 /** Per-second shrink when population is over the cap (lost territory). */
 export const POP_DECAY = 0.06;
 /**
@@ -81,8 +95,13 @@ export const TROOP_MOMENTUM_CAP = 0.97;
 /** How fast population re-balances toward the troop/worker slider, per second. */
 export const MIGRATE_RATE = 0.4;
 
-export const WORKER_GOLD = 0.0075;
-export const TILE_GOLD = 0.003;
+/**
+ * Gold comes from workers, cities, ports and trade -- never from raw
+ * territory. Holding land buys you an army (see LAND_GROWTH and POP_PER_TILE
+ * above), not an income: getting rich means putting people to work and
+ * building something, not simply sprawling.
+ */
+export const WORKER_GOLD = 0.011;
 
 export const DEFAULT_TROOP_RATIO = 0.6;
 export const DEFAULT_ATTACK_RATIO = 0.25;
@@ -190,6 +209,33 @@ export const TRADE_MAX_PARTNERS_PER_PORT = 3;
 export const TRADE_ALLY_BONUS = 1.75;
 /** Trade graph is rebuilt this often (ticks) rather than every tick. */
 export const TRADE_REFRESH_TICKS = 3 * TICKS_PER_SECOND;
+
+// ---------------------------------------------------------- encirclement ----
+
+/**
+ * Anything completely boxed in by a single nation falls to it for free --
+ * once you have surrounded something, grinding it down tile by tile is a
+ * formality. Two cases, with deliberately different rules:
+ *
+ *  - Unclaimed pockets are judged by their *land* neighbours only, so a
+ *    stray hole on your own shoreline still gets filled in.
+ *  - Whole nations must be genuinely landlocked to be annexed. A nation with
+ *    any coast can still ship an army out (see boats, above), so the sea is
+ *    a real escape route rather than a technicality.
+ */
+export const ENCLOSURE_SCAN_TICKS = 2 * TICKS_PER_SECOND;
+/**
+ * Largest unclaimed pocket that can be swallowed whole. Without a ceiling,
+ * a nation that happens to be the only one touching a big untouched
+ * interior would inhale it in one tick -- surrounding is meant to close out
+ * a pocket, not to substitute for expanding.
+ */
+export const ENCLOSED_MAX_TILES = 400;
+
+/** Share of a nation's treasury taken when it is annexed by encirclement. */
+export const ANNEX_GOLD_SHARE = 1;
+/** Share taken by whoever seizes a nation's last tile in ordinary conquest. */
+export const CONQUEST_GOLD_SHARE = 0.5;
 
 // --------------------------------------------------------------- victory ----
 

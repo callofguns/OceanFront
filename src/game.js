@@ -33,6 +33,10 @@ import {
   TRADE_REFRESH_TICKS,
   DIFFICULTIES,
   DEFAULT_DIFFICULTY,
+  ENCLOSURE_SCAN_TICKS,
+  ENCLOSED_MAX_TILES,
+  ANNEX_GOLD_SHARE,
+  CONQUEST_GOLD_SHARE,
 } from './config.js';
 import { generateMap, findSpawnPoints } from './map.js';
 import { makeRng, shuffle } from './rng.js';
@@ -115,6 +119,13 @@ export class Game {
     this._stamp = new Int32Array(this.map.size);
     this._gen = 0;
     this._nb = new Int32Array(4);
+
+    // Bumped by every ownership change, so the encirclement scan can skip
+    // entirely when the map has not moved since it last ran. Kept separate
+    // from `dirty`, which the renderer clears on its own schedule.
+    this._territoryVersion = 0;
+    this._enclosureScanAt = -1;
+    this._floodQueue = new Int32Array(this.map.size);
 
     this.#createPlayers(preset.bots, playerName, playerColor);
     this.diplomacy = new Diplomacy(this);
@@ -205,9 +216,16 @@ export class Game {
   setOwner(tile, newOwnerId) {
     const old = this.owner[tile];
     if (old === newOwnerId) return;
-    if (old >= 0) this.players[old].removeTile(tile);
+    if (old >= 0) {
+      this.players[old].removeTile(tile);
+      // Remember who is taking our land, so the treasury has somewhere to go
+      // if this turns out to be the last tile. Land lost to a nuke goes to
+      // NEUTRAL and clears this instead -- nobody profits from fallout.
+      this.players[old].lastConquerorId = newOwnerId;
+    }
     this.owner[tile] = newOwnerId;
     if (newOwnerId >= 0) this.players[newOwnerId].addTile(tile);
+    this._territoryVersion++;
 
     const b = this.buildingAt.get(tile);
     if (b) {
@@ -500,6 +518,157 @@ export class Game {
         ((atk.attackerId === a && atk.targetId === b) ||
           (atk.attackerId === b && atk.targetId === a))
     );
+  }
+
+  // ---------------------------------------------------------- encirclement ---
+
+  /**
+   * Hand over anything that has been completely boxed in by a single nation.
+   * Once you have surrounded something there is no fight left to have, so it
+   * falls for free rather than having to be ground down tile by tile.
+   *
+   * Skipped entirely when no land has changed hands since the last scan,
+   * which is the common case between battles.
+   */
+  #absorbEnclosed() {
+    if (this._enclosureScanAt === this._territoryVersion) return;
+    this.#absorbEnclosedPockets();
+    // Pockets first: swallowing the last patch of open land beside a nation
+    // can be exactly what seals it in, so this resolves in one pass instead
+    // of waiting for the next scan.
+    this.#annexEnclosedNations();
+    this._enclosureScanAt = this._territoryVersion;
+  }
+
+  /**
+   * Unclaimed pockets whose every land neighbour is the same nation. Judged
+   * on land alone, so a stray hole on your own coastline still gets filled
+   * in -- those are exactly the gaps a ragged front leaves behind.
+   */
+  #absorbEnclosedPockets() {
+    const map = this.map;
+    const stamp = this._stamp;
+    const queue = this._floodQueue;
+    const nb = this._nb;
+
+    this._gen++;
+    const gen = this._gen;
+
+    for (let start = 0; start < map.size; start++) {
+      if (stamp[start] === gen) continue;
+      if (map.terrain[start] === OCEAN || this.owner[start] !== NEUTRAL) continue;
+
+      // Flood the whole neutral component. `queue[0..tail)` ends up holding
+      // exactly its tiles, so no per-component allocation is needed.
+      let head = 0;
+      let tail = 0;
+      queue[tail++] = start;
+      stamp[start] = gen;
+      let claimant = NEUTRAL; // NEUTRAL = none seen yet, -2 = more than one
+
+      while (head < tail) {
+        const cur = queue[head++];
+        const n = map.neighbors(cur, nb);
+        for (let k = 0; k < n; k++) {
+          const j = nb[k];
+          if (map.terrain[j] === OCEAN) continue;
+          const o = this.owner[j];
+          if (o === NEUTRAL) {
+            if (stamp[j] !== gen) {
+              stamp[j] = gen;
+              queue[tail++] = j;
+            }
+          } else if (claimant === NEUTRAL) {
+            claimant = o;
+          } else if (claimant !== o) {
+            claimant = -2;
+          }
+        }
+      }
+
+      // One owner all the way round, and small enough that this is closing
+      // out a pocket rather than standing in for actually expanding.
+      if (claimant < 0 || tail > ENCLOSED_MAX_TILES) continue;
+      for (let i = 0; i < tail; i++) this.setOwner(queue[i], claimant);
+    }
+  }
+
+  /**
+   * Nations sealed in by a single rival. Unlike pockets these must be truly
+   * landlocked: any coast at all means an army can still be shipped out, so
+   * the sea counts as a way out rather than a technicality.
+   */
+  #annexEnclosedNations() {
+    const map = this.map;
+    const nb = this._nb;
+
+    for (const victim of this.players) {
+      if (!victim.alive || victim.tiles.size === 0) continue;
+
+      let captor = NEUTRAL; // NEUTRAL = none yet, -2 = open land or several rivals
+      let hasCoast = false;
+
+      outer:
+      for (const tile of victim.tiles) {
+        const n = map.neighbors(tile, nb);
+        for (let k = 0; k < n; k++) {
+          const j = nb[k];
+          if (map.terrain[j] === OCEAN) {
+            hasCoast = true;
+            break outer;
+          }
+          const o = this.owner[j];
+          if (o === victim.id) continue;
+          if (o === NEUTRAL) {
+            // Still has somewhere to grow, so not sealed in.
+            captor = -2;
+            break outer;
+          }
+          if (captor === NEUTRAL) captor = o;
+          else if (captor !== o) {
+            captor = -2;
+            break outer;
+          }
+        }
+      }
+
+      if (hasCoast || captor < 0) continue;
+      // Treaties hold here for the same reason they hold in launchAttack --
+      // you cannot quietly swallow someone you have sworn not to attack.
+      if (this.diplomacy.areAllied(victim.id, captor)) continue;
+
+      const conqueror = this.players[captor];
+      if (conqueror?.alive) this.#annex(conqueror, victim);
+    }
+  }
+
+  /** Absorb `victim` whole into `conqueror`: land, structures and treasury. */
+  #annex(conqueror, victim) {
+    // Snapshot first -- setOwner mutates victim.tiles as it goes. Structures
+    // change hands with the ground they stand on, via #transferBuilding.
+    const tiles = [...victim.tiles];
+    for (const tile of tiles) this.setOwner(tile, conqueror.id);
+
+    const spoils = victim.gold * ANNEX_GOLD_SHARE;
+    conqueror.gold += spoils;
+    victim.gold = 0;
+
+    // Whatever the victim still had in the field dies with the nation.
+    for (const a of this.attacks) {
+      if (!a.done && a.attackerId === victim.id) {
+        a.troops = 0;
+        a.done = true;
+      }
+    }
+    for (const b of this.boats) if (b.ownerId === victim.id) b.done = true;
+
+    victim.alive = false;
+    victim.troops = 0;
+    victim.workers = 0;
+
+    const loot = spoils >= 1 ? `, seizing ${Math.round(spoils).toLocaleString()} gold` : '';
+    this.log(`${conqueror.name} surrounded and annexed ${victim.name}${loot}.`, conqueror.color);
+    if (victim.isHuman) this.#endMatch(null);
   }
 
   // ---------------------------------------------------------------- trade ---
@@ -831,6 +1000,8 @@ export class Game {
       if (p.alive && p.ai) p.ai.update(this);
     }
 
+    if (this.tickCount % ENCLOSURE_SCAN_TICKS === 0) this.#absorbEnclosed();
+
     if (this.tickCount % 10 === 0) {
       this.#checkEliminations();
       this.#checkVictory();
@@ -846,7 +1017,22 @@ export class Game {
       p.alive = false;
       p.troops = 0;
       p.workers = 0;
-      this.log(`${p.name} has been wiped off the map.`, p.color);
+
+      // Whoever took the last tile carries off part of the treasury. Land
+      // lost to a nuke points at NEUTRAL instead, so scorching a nation off
+      // the map earns nothing -- there is nobody standing there to loot it.
+      const killer = p.lastConquerorId >= 0 ? this.players[p.lastConquerorId] : null;
+      let spoils = 0;
+      if (killer?.alive && killer.id !== p.id) {
+        spoils = p.gold * CONQUEST_GOLD_SHARE;
+        killer.gold += spoils;
+      }
+      p.gold = 0;
+
+      const loot = spoils >= 1
+        ? ` ${killer.name} carried off ${Math.round(spoils).toLocaleString()} gold.`
+        : '';
+      this.log(`${p.name} has been wiped off the map.${loot}`, p.color);
       if (p.isHuman) this.#endMatch(null);
     }
   }
