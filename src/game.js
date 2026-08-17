@@ -31,6 +31,8 @@ import {
   TRADE_MAX_PARTNERS_PER_PORT,
   TRADE_ALLY_BONUS,
   TRADE_REFRESH_TICKS,
+  DIFFICULTIES,
+  DEFAULT_DIFFICULTY,
 } from './config.js';
 import { generateMap, findSpawnPoints } from './map.js';
 import { makeRng, shuffle } from './rng.js';
@@ -83,11 +85,12 @@ class Missile {
 
 export class Game {
   constructor(options) {
-    const { preset, seed, playerName, playerColor } = options;
+    const { preset, seed, playerName, playerColor, difficulty } = options;
     this.seed = seed >>> 0;
     this.rng = makeRng(this.seed ^ 0x9e3779b9);
     this.map = generateMap(preset.w, preset.h, this.seed);
     this.preset = preset;
+    this.difficulty = DIFFICULTIES[difficulty] ? difficulty : DEFAULT_DIFFICULTY;
 
     this.owner = new Int16Array(this.map.size).fill(NEUTRAL);
     this.buildingAt = new Map();
@@ -126,11 +129,13 @@ export class Game {
     const human = new Player(0, playerName || 'You', playerColor || PLAYER_COLORS[0], true);
     this.players.push(human);
 
+    const tier = DIFFICULTIES[this.difficulty];
     const names = shuffle(this.rng, NATION_NAMES.slice());
     const colors = PLAYER_COLORS.filter((c) => c !== human.color);
     for (let i = 0; i < botCount; i++) {
       const bot = new Player(i + 1, names[i % names.length], colors[i % colors.length], false);
-      bot.ai = new AiController(bot, this.rng);
+      bot.economyMultiplier = tier.economy;
+      bot.ai = new AiController(bot, this.rng, tier);
       this.players.push(bot);
     }
   }

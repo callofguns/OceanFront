@@ -52,6 +52,10 @@ export class Player {
     // AI personality, unused for the human player.
     this.ai = null;
     this.peakTiles = 0;
+
+    /** Bot-difficulty scaling for gold income and population growth. Always
+     *  1 for the human player -- difficulty only ever affects bots. */
+    this.economyMultiplier = 1;
   }
 
   get pop() {
@@ -86,13 +90,13 @@ export class Player {
   }
 
   get goldPerSecond() {
-    return (
+    const income =
       this.workers * WORKER_GOLD +
       this.tiles.size * TILE_GOLD +
       this.buildingCounts.port * BUILDINGS.port.goldBonus +
       this.buildingCounts.city * BUILDINGS.city.goldBonus +
-      this.tradeIncome
-    );
+      this.tradeIncome;
+    return income * this.economyMultiplier;
   }
 
   countOf(key) {
@@ -117,7 +121,12 @@ export class Player {
     const ratio = this.effectiveTroopRatio;
 
     if (pop < cap) {
-      const growth = ((pop * POP_GROWTH + POP_BASE_GROWTH) * (1 - pop / cap)) / TICKS_PER_SECOND;
+      // economyMultiplier scales bot difficulty (always 1 for the human).
+      // Only growth is scaled, not the decay branch below -- a harder bot
+      // should build up faster, not merely fall apart slower after losing
+      // land, and vice versa for easy.
+      const growth =
+        (((pop * POP_GROWTH + POP_BASE_GROWTH) * (1 - pop / cap)) / TICKS_PER_SECOND) * this.economyMultiplier;
       // New population enters on the side the slider (plus troop momentum)
       // is calling for.
       this.troops += growth * ratio;

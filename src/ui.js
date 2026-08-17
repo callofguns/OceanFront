@@ -10,6 +10,8 @@ import {
   MAP_PRESETS,
   PLAYER_COLORS,
   NUKE_COST,
+  DIFFICULTIES,
+  DEFAULT_DIFFICULTY,
 } from './config.js';
 import { formatShort } from './render.js';
 import { CURRENT_VERSION, CHANGELOG } from './changelog.js';
@@ -37,6 +39,7 @@ export class UI {
       name: 'Player',
       color: PLAYER_COLORS[0],
       preset: 'medium',
+      difficulty: DEFAULT_DIFFICULTY,
     };
 
     this.keys = new Set();
@@ -102,6 +105,7 @@ export class UI {
       if (typeof saved.name === 'string' && saved.name.trim()) this.settings.name = saved.name;
       if (PLAYER_COLORS.includes(saved.color)) this.settings.color = saved.color;
       if (MAP_PRESETS[saved.preset]) this.settings.preset = saved.preset;
+      if (DIFFICULTIES[saved.difficulty]) this.settings.difficulty = saved.difficulty;
     } catch {
       /* corrupted or unavailable storage is not worth surfacing */
     }
@@ -154,6 +158,23 @@ export class UI {
       sizePicker.appendChild(btn);
     }
 
+    const difficultyPicker = $('difficulty-picker');
+    for (const tier of Object.values(DIFFICULTIES)) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'choice' + (tier.key === this.settings.difficulty ? ' is-active' : '');
+      btn.appendChild(document.createTextNode(tier.label));
+      const small = document.createElement('small');
+      small.textContent = tier.key === 'normal' ? 'default' : `${tier.economy}× economy`;
+      btn.appendChild(small);
+      btn.addEventListener('click', () => {
+        this.settings.difficulty = tier.key;
+        for (const el of difficultyPicker.children) el.classList.remove('is-active');
+        btn.classList.add('is-active');
+      });
+      difficultyPicker.appendChild(btn);
+    }
+
     const seedInput = $('seed-input');
     seedInput.value = String(Math.floor(Math.random() * 1_000_000));
 
@@ -166,6 +187,7 @@ export class UI {
         seed: hashSeed(seedInput.value),
         playerName: name,
         playerColor: this.settings.color,
+        difficulty: this.settings.difficulty,
       });
     });
 
@@ -693,6 +715,7 @@ export class UI {
     const human = game.human;
 
     $('stat-troops').textContent = formatShort(human.troops);
+    this.#refreshAttackingStat(game, human);
     $('stat-workers').textContent = formatShort(human.workers);
     $('stat-pop').textContent = `${formatShort(human.pop)} / ${formatShort(human.maxPop)}`;
     $('stat-gold').textContent = `${formatShort(human.gold)}  (+${human.goldPerSecond.toFixed(1)}/s)`;
@@ -703,6 +726,19 @@ export class UI {
     this.#refreshLeaderboard(game, human);
     this.#refreshEvents(game);
     this.#refreshAttackHint(game, human);
+  }
+
+  /** Troops currently spent on attacks or a naval invasion -- committed and
+   *  unavailable elsewhere, shown as a small separate number next to the
+   *  standing-army total. Hidden entirely when nothing is under way. */
+  #refreshAttackingStat(game, human) {
+    let committed = 0;
+    for (const a of game.attacksBy(human.id)) committed += a.troops;
+    for (const b of game.boats) if (b.ownerId === human.id) committed += b.troops;
+
+    const el = $('stat-attacking');
+    el.hidden = committed < 1;
+    if (!el.hidden) el.textContent = formatShort(committed);
   }
 
   #refreshBuildCosts(human) {

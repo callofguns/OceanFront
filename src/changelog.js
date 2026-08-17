@@ -2,9 +2,18 @@
 // main menu. CURRENT_VERSION drives the visible tag -- bump it whenever a
 // new entry is added below. Newest first.
 
-export const CURRENT_VERSION = 'v1.1.0-beta';
+export const CURRENT_VERSION = 'v1.2.0-beta';
 
 export const CHANGELOG = [
+  {
+    version: 'v1.2.0-beta',
+    notes: [
+      'Land is cheaper to expand into, on top of the previous reduction.',
+      'The Troops stat now shows a separate number for troops currently committed to attacks or a naval invasion.',
+      'Tightened the troops ↔ workers slider to a 25–75% range (bots included), so neither side can be neglected entirely.',
+      'Added an Easy / Normal / Hard bot difficulty setting to the main menu, scaling both bot economy and aggression.',
+    ],
+  },
   {
     version: 'v1.1.0-beta',
     notes: [

@@ -7,13 +7,18 @@ const THINK_MIN = 18; // ticks
 const THINK_MAX = 34;
 
 export class AiController {
-  constructor(player, rng) {
+  /** `tier` is a DIFFICULTIES entry from config.js (defaults to a neutral
+   *  1x multiplier so a bot can still be constructed without one, e.g. in
+   *  older test helpers). */
+  constructor(player, rng, tier = { aggression: 1 }) {
     this.player = player;
     this.rng = rng;
-    // Personality, so bots do not all play identically.
-    this.aggression = 0.5 + rng() * 0.9;
-    this.greed = 0.6 + rng() * 0.8;
-    this.expansionism = 0.7 + rng() * 0.8;
+    // Personality, so bots do not all play identically -- scaled by
+    // difficulty, so harder bots lean further toward attacking sooner and
+    // more often, not just having a bigger economy behind them.
+    this.aggression = (0.5 + rng() * 0.9) * tier.aggression;
+    this.greed = (0.6 + rng() * 0.8) * tier.aggression;
+    this.expansionism = (0.7 + rng() * 0.8) * tier.aggression;
     this.cooldown = Math.floor(rng() * THINK_MAX);
     this.lastBorderScan = null;
   }
@@ -135,7 +140,10 @@ export class AiController {
     const p = this.player;
     const threatened = border.contact.size > 0;
     const target = threatened ? 0.55 + 0.15 * this.aggression : 0.42;
-    p.troopRatio = Math.min(0.85, target);
+    // Same 25-75% bound the player's own slider is limited to (see the
+    // #troop-ratio input in index.html) -- bots play by the same rule
+    // rather than being able to out-militarize what the player is allowed.
+    p.troopRatio = Math.max(0.25, Math.min(0.75, target));
   }
 
   #spendGold(game, border) {

@@ -118,9 +118,26 @@ html, body {
   text-transform: uppercase;
   color: var(--ink-faint);
 }
-.stat-value { font-size: 16px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.stat-value {
+  font-size: 16px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
 .stat.gold .stat-value { color: var(--gold); }
 .stat-sub { font-size: 11px; color: var(--ink-dim); font-weight: 500; }
+
+/* The troops currently spent on an attack/invasion -- a small, separate
+   number next to the standing-army total, only shown while something is
+   actually committed so it doesn't clutter an idle turn. */
+.stat-attacking {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--danger);
+}
+.stat-attacking::before { content: "⚔ "; }
 
 .spacer { flex: 1; }
 

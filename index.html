@@ -28,7 +28,10 @@
     <div class="brand">🌊 <span>OceanFront</span></div>
     <div class="stat" title="Soldiers available to attack and defend">
       <span class="stat-label">Troops</span>
-      <span class="stat-value" id="stat-troops">0</span>
+      <span class="stat-value">
+        <span id="stat-troops">0</span>
+        <span id="stat-attacking" class="stat-attacking" title="Troops currently committed to attacks or a naval invasion" hidden>0</span>
+      </span>
     </div>
     <div class="stat" title="Civilians producing gold">
       <span class="stat-label">Workers</span>
@@ -102,7 +105,7 @@
         <span>Troops ↔ Workers</span>
         <b id="troop-ratio-value">60% troops</b>
       </span>
-      <input type="range" id="troop-ratio" min="10" max="95" step="5" value="60">
+      <input type="range" id="troop-ratio" min="25" max="75" step="5" value="60">
       <span class="slider-hint">Workers earn gold, troops take land</span>
     </label>
     <div id="mode-hint">Click enemy or empty land to attack it.</div>
@@ -154,6 +157,11 @@
     <div class="field">
       <label>World size</label>
       <div id="size-picker" class="choice-row"></div>
+    </div>
+
+    <div class="field">
+      <label>Bot difficulty</label>
+      <div id="difficulty-picker" class="choice-row"></div>
     </div>
 
     <div class="field">

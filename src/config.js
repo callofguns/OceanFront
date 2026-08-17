@@ -14,16 +14,16 @@ export const MOUNTAIN = 3;
 export const TERRAIN_NAMES = ['Ocean', 'Plains', 'Highland', 'Mountain'];
 
 // Flat troop cost of stepping onto the tile, before defender strength.
-export const TERRAIN_COST = [Infinity, 1.0, 2.0, 3.6];
+export const TERRAIN_COST = [Infinity, 0.7, 1.5, 2.6];
 // Multiplier applied to the whole tile cost -- rough ground defends itself.
-export const TERRAIN_DEFENSE = [1, 1.0, 1.15, 1.4];
+export const TERRAIN_DEFENSE = [1, 1.0, 1.1, 1.3];
 
 // ----------------------------------------------------------------- combat ---
 
 /** Effective troops-per-tile that unclaimed land defends itself with. */
-export const NEUTRAL_DENSITY = 1.7;
+export const NEUTRAL_DENSITY = 1.1;
 /** How much a defender's troop density is worth per tile. */
-export const DEFENDER_STRENGTH = 1.5;
+export const DEFENDER_STRENGTH = 1.15;
 /** Fraction of a defender's per-tile density that dies when a tile falls. */
 export const DEFENDER_LOSS = 0.85;
 /** Attacks conquer at least this many tiles per tick... */
@@ -203,6 +203,22 @@ export const MAP_PRESETS = {
   medium: { key: 'medium', label: 'Medium', w: 420, h: 260, bots: 14 },
   large: { key: 'large', label: 'Large', w: 560, h: 340, bots: 22 },
 };
+
+/**
+ * Bot difficulty, chosen on the main menu. Scales bots on two axes: economy
+ * (gold income and population growth -- always a felt difference, since it
+ * doesn't depend on how a bot's own decision logic happens to play out) and
+ * aggression (the personality traits in AiController, so harder bots also
+ * attack sooner and more often, not just with a bigger stack behind them).
+ * The human player is never affected by this -- it only ever scales bots.
+ * 'normal' is 1/1, so games default to exactly today's balance.
+ */
+export const DIFFICULTIES = {
+  easy: { key: 'easy', label: 'Easy', economy: 0.6, aggression: 0.6 },
+  normal: { key: 'normal', label: 'Normal', economy: 1, aggression: 1 },
+  hard: { key: 'hard', label: 'Hard', economy: 1.6, aggression: 1.45 },
+};
+export const DEFAULT_DIFFICULTY = 'normal';
 
 export const PLAYER_COLORS = [
   '#e0484f', '#3f8ce8', '#37b26a', '#e0a33a', '#9b5de5',

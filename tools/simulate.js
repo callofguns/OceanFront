@@ -4,10 +4,10 @@
 // match developed. Use it to catch crashes, stalled expansion and tick-time
 // regressions without opening a browser.
 //
-//   node tools/simulate.js [--size=medium] [--seed=123] [--minutes=12]
+//   node tools/simulate.js [--size=medium] [--seed=123] [--minutes=12] [--difficulty=normal]
 
 import { Game } from '../src/game.js';
-import { MAP_PRESETS, TICKS_PER_SECOND } from '../src/config.js';
+import { MAP_PRESETS, TICKS_PER_SECOND, DIFFICULTIES, DEFAULT_DIFFICULTY } from '../src/config.js';
 
 const args = Object.fromEntries(
   process.argv.slice(2).map((a) => {
@@ -20,11 +20,12 @@ const preset = MAP_PRESETS[args.size || 'medium'] || MAP_PRESETS.medium;
 const seed = Number(args.seed ?? Math.floor(Math.random() * 1e6));
 const minutes = Number(args.minutes ?? 12);
 const maxTicks = Math.round(minutes * 60 * TICKS_PER_SECOND);
+const difficulty = DIFFICULTIES[args.difficulty] ? args.difficulty : DEFAULT_DIFFICULTY;
 
-console.log(`OceanFront headless run — ${preset.label} (${preset.w}x${preset.h}), seed ${seed}`);
+console.log(`OceanFront headless run — ${preset.label} (${preset.w}x${preset.h}), seed ${seed}, difficulty ${difficulty}`);
 
 const t0 = performance.now();
-const game = new Game({ preset, seed, playerName: 'Bot Zero', playerColor: '#e0484f' });
+const game = new Game({ preset, seed, playerName: 'Bot Zero', playerColor: '#e0484f', difficulty });
 const genMs = performance.now() - t0;
 
 // Give the "human" slot an AI so the whole board plays itself.
