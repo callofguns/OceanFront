@@ -55,6 +55,29 @@ export const POP_GROWTH = 0.075;
 export const POP_BASE_GROWTH = 8;
 /** Per-second shrink when population is over the cap (lost territory). */
 export const POP_DECAY = 0.06;
+/**
+ * A large standing army pulls the troops/workers split further toward
+ * troops than the slider alone asks for -- a big military snowballs instead
+ * of growing at a flat rate. This has to work by shifting the *target* the
+ * rebalancer (MIGRATE_RATE, below) pulls toward, not by adding troops on the
+ * side: the rebalancer runs every tick and continuously corrects the split
+ * back toward whatever ratio it's given, so troops added on top of that
+ * would just leak back out into workers over time instead of compounding.
+ *
+ * The push approaches TROOP_MOMENTUM_CAP asymptotically as troops grow, at
+ * the rate set by TROOP_MOMENTUM_SCALE (roughly the troop count at which
+ * ~63% of the available headroom is used) -- never hitting a hard wall, so
+ * a nation with 40,000 troops still keeps out-accelerating one with 15,000.
+ * Real matches were sampled to size this: nations run from ~200 troops at
+ * spawn up past 40,000 for a dominant empire by minute 10, so a linear rate
+ * strong enough to matter early ends up flatly maxed out for most of the
+ * game -- this curve stays meaningfully differentiated across that whole
+ * range instead.
+ */
+export const TROOP_MOMENTUM_SCALE = 12000;
+/** However large the army, the effective ratio never exceeds this -- some
+ *  minimum worker base (and gold income) always survives. */
+export const TROOP_MOMENTUM_CAP = 0.97;
 /** How fast population re-balances toward the troop/worker slider, per second. */
 export const MIGRATE_RATE = 0.4;
 

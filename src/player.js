@@ -8,6 +8,8 @@ import {
   POP_BASE_GROWTH,
   POP_DECAY,
   MIGRATE_RATE,
+  TROOP_MOMENTUM_SCALE,
+  TROOP_MOMENTUM_CAP,
   WORKER_GOLD,
   TILE_GOLD,
   TICKS_PER_SECOND,
@@ -69,6 +71,20 @@ export class Player {
     return BASE_POP + this.tiles.size * POP_PER_TILE + this.buildingCounts.city * BUILDINGS.city.popBonus;
   }
 
+  /**
+   * The troop share actually being grown/rebalanced toward, this tick --
+   * the slider's troopRatio, plus a push proportional to how many troops
+   * you already have. This is what makes a big army snowball: more troops
+   * raises the target, which pulls even more of new growth (and existing
+   * workers) into troops, which raises the target further next tick.
+   */
+  get effectiveTroopRatio() {
+    const headroom = TROOP_MOMENTUM_CAP - this.troopRatio;
+    if (headroom <= 0) return this.troopRatio;
+    const bonus = headroom * (1 - Math.exp(-this.troops / TROOP_MOMENTUM_SCALE));
+    return this.troopRatio + bonus;
+  }
+
   get goldPerSecond() {
     return (
       this.workers * WORKER_GOLD +
@@ -96,12 +112,16 @@ export class Player {
   updateEconomy() {
     const cap = this.maxPop;
     const pop = this.pop;
+    // Computed once and reused for both steps below, so growth and
+    // rebalancing always agree on where troops are headed this tick.
+    const ratio = this.effectiveTroopRatio;
 
     if (pop < cap) {
       const growth = ((pop * POP_GROWTH + POP_BASE_GROWTH) * (1 - pop / cap)) / TICKS_PER_SECOND;
-      // New population enters on the side the slider is calling for.
-      this.troops += growth * this.troopRatio;
-      this.workers += growth * (1 - this.troopRatio);
+      // New population enters on the side the slider (plus troop momentum)
+      // is calling for.
+      this.troops += growth * ratio;
+      this.workers += growth * (1 - ratio);
     } else if (pop > cap) {
       // Overpopulated after losing land: shrink back down toward the cap.
       const decay = ((pop - cap) * POP_DECAY) / TICKS_PER_SECOND;
@@ -111,7 +131,7 @@ export class Player {
     }
 
     // Re-balance existing population toward the requested split.
-    const desiredTroops = this.pop * this.troopRatio;
+    const desiredTroops = this.pop * ratio;
     let move = ((desiredTroops - this.troops) * MIGRATE_RATE) / TICKS_PER_SECOND;
     if (move > this.workers) move = this.workers;
     if (-move > this.troops) move = -this.troops;

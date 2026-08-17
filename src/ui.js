@@ -12,6 +12,7 @@ import {
   NUKE_COST,
 } from './config.js';
 import { formatShort } from './render.js';
+import { CURRENT_VERSION, CHANGELOG } from './changelog.js';
 
 const HUD_INTERVAL_MS = 120;
 const DRAG_THRESHOLD = 4;
@@ -53,6 +54,7 @@ export class UI {
 
     this.#restoreSettings();
     this.#buildStartScreen();
+    this.#buildChangelog();
     this.#bindGlobalInput();
     this.#bindMobileChrome();
     this.#bindInstallPrompt();
@@ -172,6 +174,33 @@ export class UI {
       $('startscreen').hidden = false;
       seedInput.value = String(Math.floor(Math.random() * 1_000_000));
     });
+  }
+
+  /** Small collapsible version tag + release history at the foot of the main menu. */
+  #buildChangelog() {
+    const details = $('changelog');
+
+    const summary = document.createElement('summary');
+    summary.textContent = CURRENT_VERSION;
+    details.appendChild(summary);
+
+    const entries = document.createElement('div');
+    entries.className = 'entries';
+    for (const entry of CHANGELOG) {
+      const version = document.createElement('div');
+      version.className = 'entry-version';
+      version.textContent = entry.version;
+      entries.appendChild(version);
+
+      const list = document.createElement('ul');
+      for (const note of entry.notes) {
+        const li = document.createElement('li');
+        li.textContent = note;
+        list.appendChild(li);
+      }
+      entries.appendChild(list);
+    }
+    details.appendChild(entries);
   }
 
   // -------------------------------------------------------------- attach ---
