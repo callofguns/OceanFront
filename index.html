@@ -33,15 +33,11 @@
         <span id="stat-attacking" class="stat-attacking" title="Troops currently committed to attacks or a naval invasion" hidden>0</span>
       </span>
     </div>
-    <div class="stat" title="Civilians producing gold">
-      <span class="stat-label">Workers</span>
-      <span class="stat-value" id="stat-workers">0</span>
-    </div>
-    <div class="stat pop" title="Population against your current cap">
-      <span class="stat-label">Population <b id="stat-pop-rate">+0/s</b></span>
+    <div class="stat pop" title="Standing army against your current troop cap">
+      <span class="stat-label">Army <b id="stat-pop-rate">+0/s</b></span>
       <div class="popbar" id="pop-bar">
         <div class="popbar-fill troops" id="pop-bar-troops"></div>
-        <div class="popbar-fill workers" id="pop-bar-workers"></div>
+        <div class="popbar-fill attacking" id="pop-bar-attacking"></div>
         <div class="popbar-text">
           <span id="stat-pop">0</span><span id="stat-pop-max">0</span>
         </div>
@@ -105,14 +101,6 @@
       </span>
       <input type="range" id="attack-ratio" min="5" max="100" step="5" value="25">
       <span class="slider-hint">Share of troops sent per attack</span>
-    </label>
-    <label class="slider">
-      <span class="slider-head">
-        <span>Troops ↔ Workers</span>
-        <b id="troop-ratio-value">60% troops</b>
-      </span>
-      <input type="range" id="troop-ratio" min="25" max="75" step="5" value="60">
-      <span class="slider-hint">Workers earn gold, troops take land</span>
     </label>
     <div id="mode-hint">Click enemy or empty land to attack it.</div>
   </footer>
@@ -181,10 +169,10 @@
       <summary>How to play</summary>
       <ul>
         <li><b>Expand:</b> click any land you don't own to send troops at it. Grey land is cheap; defended land is not.</li>
-        <li><b>Grow:</b> land is your army — every tile raises your population ceiling and speeds up how fast troops regrow.</li>
-        <li><b>Earn:</b> the bottom slider splits your people between troops and gold-earning workers. Land itself pays no gold.</li>
+        <li><b>Grow:</b> land raises your troop cap, with diminishing returns the wider you sprawl — a huge nation still needs cities to keep growing.</li>
+        <li><b>Earn:</b> gold trickles in on its own and stacks with ports and trade routes. Land itself pays no gold.</li>
         <li><b>Surround:</b> anything you completely box in falls to you for free. Annex a nation this way and you take its whole treasury.</li>
-        <li><b>Build:</b> cities raise your population cap, ports earn trade gold, defense posts make your land expensive to take.</li>
+        <li><b>Build:</b> cities raise your troop cap, ports earn trade gold, defense posts make your land expensive to take.</li>
         <li><b>Escalate:</b> silos launch nukes, SAMs shoot them down, and boats carry invasions across the sea.</li>
         <li><b>Scheme:</b> ally with rivals for protection and richer trade — then betray them, if you can afford the reputation.</li>
         <li><b>Win:</b> hold 60% of the world's land.</li>

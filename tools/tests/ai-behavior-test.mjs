@@ -29,7 +29,6 @@ function blankGame(difficulty = 'normal') {
   for (const p of game.players) {
     p.tiles.clear();
     p.troops = 0;
-    p.workers = 0;
     p.gold = 0;
     p.alive = true;
     p.ai = null;
@@ -152,15 +151,11 @@ console.log('\n▸ A rival whose army has collapsed is preferred (very-weak snow
   rect(game, 10, 31, 14, 35, b.id);
 
   p.troops = 5000;
-  a.troops = a.tiles.size * 2;   // a healthy, moderate-density army
+  a.troops = a.tiles.size * 5;   // a healthy, well-filled army (fillRatio well above the weak cutoff)
   b.troops = 5;                   // b has all but vanished
 
-  const aExpected = a.maxPop * a.troopRatio;
-  const bExpected = b.maxPop * b.troopRatio;
-  check('setup: a is NOT very weak by its own standard', a.troops / aExpected >= 0.2,
-    `${(a.troops / aExpected).toFixed(2)}`);
-  check('setup: b IS very weak by its own standard', b.troops / bExpected < 0.2,
-    `${(b.troops / bExpected).toFixed(2)}`);
+  check('setup: a is NOT very weak by its own standard', a.fillRatio >= 0.2, `${a.fillRatio.toFixed(2)}`);
+  check('setup: b IS very weak by its own standard', b.fillRatio < 0.2, `${b.fillRatio.toFixed(2)}`);
 
   const ai = new AiController(p, dummyRng, DIFFICULTIES.normal);
   ai.rng = () => 0.999;
@@ -176,27 +171,32 @@ console.log('\n▸ A rival whose army has collapsed is preferred (very-weak snow
 // ---------------------------------------------------------------------------
 console.log('\n▸ Hard tier refuses a token attack, but still retaliates when attacked itself');
 {
-  // p: modest density, r: a bit denser (keeps the base viability gate open
-  // at ratio (6+1)/(8+1)=0.78) but with a large enough gap in *absolute*
-  // troops that any commit fraction sends well under 20% of r's army.
+  // Viability is now fill-ratio-based (troops vs. own troop cap), not
+  // density -- see the boxedIn comment in ai.js's #doDiplomacy -- so p and r
+  // are sized to keep their *fill ratios* close (comfortably clearing both
+  // the 0.75 viability gate and Hard's own 0.35 readiness floor -- Hard
+  // bots also get a 1.25x troopsCapMultiplier, see DIFFICULTIES, which
+  // raises the cap both players are being compared against) while r's own
+  // cap (and so its absolute troops) is far larger, giving it a big enough
+  // troop-count edge that any commit fraction from p sends well under 20%
+  // of r's army, with room to spare after r spends 500 troops launching its
+  // own counter-attack later in this test.
   const game = blankGame('hard');
   const p = game.players[1];
   const r = game.players[2];
 
-  rect(game, 10, 10, 19, 19, p.id);  // 10x10 = 100 tiles
-  rect(game, 20, 10, 44, 19, r.id);  // 25x10 = 250 tiles, shares the x=19/x=20 edge
+  rect(game, 10, 10, 24, 19, p.id);   // 15x10 = 150 tiles
+  rect(game, 25, 10, 99, 49, r.id);   // 75x40 = 3000 tiles, shares the x=24/x=25 edge
 
-  p.troops = 600;                     // density 6
-  r.troops = 2000;                    // density 8
+  p.troops = 1000;                    // fillRatio ~0.37 at 150 tiles -- clears Hard's 0.35 readiness
+  r.troops = 3600;                    // fillRatio ~0.35 at 3000 tiles -- comparable to p's, but a much bigger army
 
   const ai = new AiController(p, dummyRng, DIFFICULTIES.hard);
   ai.aggression = 0.5; // fixes commit at 0.4 + 0.35*0.5 = 0.575, for a precise threshold check
   ai.rng = () => 0.9;  // fails every probabilistic branch (>0.08 harassment, >0.4 boat roll, ...)
   ai.cooldown = 0;
 
-  const myDensity = p.troops / p.tiles.size;
-  const theirDensity = r.troops / r.tiles.size;
-  const ratio = (myDensity + 1) / (theirDensity + 1);
+  const ratio = (p.fillRatio + 0.1) / (r.fillRatio + 0.1);
   const wouldSend = p.troops * 0.575;
   check('setup: r clears the base viability gate', ratio >= 0.75, `ratio=${ratio.toFixed(2)}`);
   check('setup: the attack really would be under 20% of r\'s troops',
@@ -285,8 +285,7 @@ console.log('\n▸ Opportunistic betrayal: fires against a collapsed ally, not a
     ally.troops = 5; // collapsed
 
     check('setup: alliance formed', setupAlliance(game, p, ally));
-    const expected = ally.maxPop * ally.troopRatio;
-    check('setup: ally really is below the weak-ally cutoff', ally.troops / expected < 0.2);
+    check('setup: ally really is below the weak-ally cutoff', ally.fillRatio < 0.2);
 
     const ai = new AiController(p, dummyRng, DIFFICULTIES.normal);
     ai.rng = () => 0.001;
@@ -321,8 +320,7 @@ console.log('\n▸ Boxed in by an ally plus an unconquerably-dense rival still t
   turtle.troops = 5000;              // density ~556 on 9 tiles -- unconquerable
 
   check('setup: alliance formed', setupAlliance(game, p, ally));
-  const myDensity = p.troops / p.tiles.size;
-  const turtleRatio = (myDensity + 1) / (turtle.troops / turtle.tiles.size + 1);
+  const turtleRatio = (p.fillRatio + 0.1) / (turtle.fillRatio + 0.1);
   check('setup: turtle genuinely fails the viability gate', turtleRatio < 0.75,
     `ratio=${turtleRatio.toFixed(3)}`);
 

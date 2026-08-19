@@ -3,14 +3,28 @@
 
 import {
   OCEAN,
-  TERRAIN_COST,
-  TERRAIN_DEFENSE,
-  NEUTRAL_DENSITY,
-  DEFENDER_STRENGTH,
+  TERRAIN_MAG,
+  TERRAIN_SPEED,
+  MAG_REFERENCE,
   DEFENDER_LOSS,
-  ATTACK_BASE_TILES,
-  ATTACK_TILES_PER_TROOP,
-  ATTACK_MAX_TILES,
+  COMBAT_RATIO_FLOOR,
+  COMBAT_RATIO_CEIL,
+  PACE_RATIO_FLOOR,
+  PACE_RATIO_CEIL,
+  TRAITOR_DEFENSE_DEBUFF,
+  TRAITOR_SPEED_DEBUFF,
+  DEFENSE_DEBUFF_MIDPOINT_SHARE,
+  DEFENSE_DEBUFF_DECAY,
+  LARGE_ATTACKER_SHARE,
+  ATTACK_BUDGET_RATIO_SCALE,
+  ATTACK_BUDGET_FLOOR,
+  ATTACK_BUDGET_CEIL,
+  ATTACK_BUDGET_PER_BORDER,
+  NEUTRAL_BUDGET_PER_BORDER,
+  NEUTRAL_PACE_SCALE,
+  NEUTRAL_PACE_FLOOR,
+  NEUTRAL_PACE_CEIL,
+  sigmoid,
   ATTACK_MIN_TROOPS,
   FRONTIER_SAMPLE_SIZE,
   RETREAT_REFUND,
@@ -37,11 +51,9 @@ import {
   ENCLOSED_MAX_TILES,
   ANNEX_GOLD_SHARE,
   CONQUEST_GOLD_SHARE,
-  TERRAIN_SPEED_COST,
-  COMBAT_RATIO_FLOOR,
-  COMBAT_RATIO_CEIL,
-  TRAITOR_COMBAT_DISCOUNT,
   TRAITOR_DISTRUST_LIMIT,
+  SPAWN_TROOPS,
+  SPAWN_GOLD,
 } from './config.js';
 import { generateMap, findSpawnPoints } from './map.js';
 import { makeRng, shuffle } from './rng.js';
@@ -150,7 +162,9 @@ export class Game {
     const colors = PLAYER_COLORS.filter((c) => c !== human.color);
     for (let i = 0; i < botCount; i++) {
       const bot = new Player(i + 1, names[i % names.length], colors[i % colors.length], false);
-      bot.economyMultiplier = tier.economy;
+      bot.troopsCapMultiplier = tier.troopsCapMultiplier;
+      bot.troopsMultiplier = tier.troopsMultiplier;
+      bot.goldMultiplier = tier.goldMultiplier;
       bot.ai = new AiController(bot, this.rng, tier);
       this.players.push(bot);
     }
@@ -205,9 +219,8 @@ export class Game {
         this.setOwner(i, player.id);
       }
     }
-    player.troops = 220;
-    player.workers = 140;
-    player.gold = 150;
+    player.troops = SPAWN_TROOPS;
+    player.gold = SPAWN_GOLD;
     this.#updateCentroid(player);
   }
 
@@ -263,47 +276,84 @@ export class Game {
 
   // --------------------------------------------------------------- combat ---
 
-  /** Defensive multiplier granted to `ownerId` by their own defense posts. */
-  defenseAt(tile, ownerId) {
-    if (ownerId < 0) return 1;
+  /** Whether `ownerId` has a defense post within range of `tile` --
+   *  OpenFrontIO's own mechanic: a single flat bonus if any post is in
+   *  range, not a stacking one, so this stops at the first hit. */
+  hasDefensePostInRange(tile, ownerId) {
+    if (ownerId < 0) return false;
     const owner = this.players[ownerId];
-    if (!owner || owner.buildingCounts.defense === 0) return 1;
-    let mult = 1;
+    if (!owner || owner.buildingCounts.defense === 0) return false;
     for (const b of owner.buildings) {
       if (b.key !== 'defense') continue;
-      if (this.map.dist(b.tile, tile) <= BUILDINGS.defense.radius) {
-        mult += BUILDINGS.defense.defenseBonus;
-      }
+      if (this.map.dist(b.tile, tile) <= BUILDINGS.defense.radius) return true;
     }
-    return mult;
+    return false;
   }
 
   /**
-   * Troop cost to take `tile` from `targetId` (NEUTRAL for unclaimed land).
-   * `attackTroops` is the attacking force's current remaining pool (an
-   * Attack's or a Boat's `.troops`) -- against a real defender, the cost
-   * scales with how lopsided the fight is: a crushing numbers advantage
-   * makes each tile cheaper, an even or losing fight makes it costlier.
-   * Neutral land has no army to be relatively stronger or weaker than, so
-   * `attackTroops` has no effect there -- pass any value (0 is fine) when
-   * `targetId` is NEUTRAL.
+   * Combat outcome for taking `tile` from `targetId` (NEUTRAL for unclaimed
+   * land), given the attacking force's current troop pool `attackTroops`
+   * (an Attack's or a Boat's `.troops`) and `attackerId` (whose own share of
+   * the map's land feeds the large-attacker bonus, below). Ported from
+   * OpenFrontIO's attackLogic()/attackTilesPerTick(): both sides' losses and
+   * the tile's share of an attack's per-tick budget come from one call,
+   * using terrain, defense-post proximity, traitor status and each side's
+   * share of the map's land -- see src/config.js's combat section for the
+   * exact constants and how they were scaled. Against neutral land there's
+   * no defender to lose troops or to be relatively stronger/weaker than, so
+   * `defenderLoss` is 0 and the ratio-sensitive terms drop out entirely.
    */
-  tileCost(tile, targetId, attackTroops = 0) {
+  attackLogic(tile, targetId, attackTroops, attackerId) {
     const t = this.map.terrain[tile];
     const defender = targetId >= 0 ? this.players[targetId] : null;
-    const density = defender ? defender.density : NEUTRAL_DENSITY;
+    const troops = Math.max(1, attackTroops); // guards the divisions below
 
-    let ratio = 1;
-    if (defender && attackTroops > 0) {
-      ratio = Math.min(COMBAT_RATIO_CEIL, Math.max(COMBAT_RATIO_FLOOR, defender.troops / attackTroops));
+    let mag = TERRAIN_MAG[t];
+    let speed = TERRAIN_SPEED[t];
+    if (defender && this.hasDefensePostInRange(tile, targetId)) {
+      mag *= BUILDINGS.defense.lossBonus;
+      speed *= BUILDINGS.defense.speedBonus;
     }
-    // Betraying an ally costs more than trust -- it costs blood too.
-    const traitor = defender && defender.traitorScore > TRAITOR_DISTRUST_LIMIT
-      ? TRAITOR_COMBAT_DISCOUNT
-      : 1;
 
-    const base = (density * DEFENDER_STRENGTH + TERRAIN_COST[t]) * ratio * traitor;
-    return base * TERRAIN_DEFENSE[t] * this.defenseAt(tile, targetId);
+    if (!defender) {
+      return {
+        attackerLoss: mag / 5,
+        defenderLoss: 0,
+        tilesPerTickUsed: Math.min(
+          NEUTRAL_PACE_CEIL,
+          Math.max(NEUTRAL_PACE_FLOOR, (NEUTRAL_PACE_SCALE * Math.max(10, speed)) / troops)
+        ),
+      };
+    }
+
+    const defenderShare = defender.tiles.size / this.map.landCount;
+    const defenseSig = 1 - sigmoid(defenderShare, DEFENSE_DEBUFF_DECAY, DEFENSE_DEBUFF_MIDPOINT_SHARE);
+    const bigDefenderMult = 0.7 + 0.3 * defenseSig;
+
+    let bigAttackerLossMult = 1;
+    let bigAttackerPaceMult = 1;
+    const attacker = attackerId >= 0 ? this.players[attackerId] : null;
+    if (attacker) {
+      const attackerShare = attacker.tiles.size / this.map.landCount;
+      if (attackerShare > LARGE_ATTACKER_SHARE) {
+        bigAttackerLossMult = (LARGE_ATTACKER_SHARE / attackerShare) ** 0.7;
+        bigAttackerPaceMult = (LARGE_ATTACKER_SHARE / attackerShare) ** 0.6;
+      }
+    }
+
+    const traitor = defender.traitorScore > TRAITOR_DISTRUST_LIMIT;
+    const lossTraitorMod = traitor ? TRAITOR_DEFENSE_DEBUFF : 1;
+    const paceTraitorMod = traitor ? TRAITOR_SPEED_DEBUFF : 1;
+
+    const ratio = Math.min(COMBAT_RATIO_CEIL, Math.max(COMBAT_RATIO_FLOOR, defender.troops / troops));
+    const currentLoss = ratio * mag * 0.8 * bigDefenderMult * bigAttackerLossMult * lossTraitorMod;
+    const altLoss = 1.3 * defender.density * (mag / MAG_REFERENCE) * lossTraitorMod;
+    const attackerLoss = 0.6 * currentLoss + 0.4 * altLoss;
+
+    const paceRatio = Math.min(PACE_RATIO_CEIL, Math.max(PACE_RATIO_FLOOR, defender.troops / (5 * troops)));
+    const tilesPerTickUsed = paceRatio * speed * bigDefenderMult * bigAttackerPaceMult * paceTraitorMod;
+
+    return { attackerLoss, defenderLoss: defender.density * DEFENDER_LOSS, tilesPerTickUsed };
   }
 
   /** Does `attacker` share a land border with `targetId`? */
@@ -405,10 +455,22 @@ export class Game {
       return;
     }
 
-    const budget = Math.min(
-      ATTACK_MAX_TILES,
-      Math.ceil(ATTACK_BASE_TILES + attack.troops * ATTACK_TILES_PER_TROOP)
-    );
+    // Budget an attack gets to spend this tick, ported from OpenFrontIO's
+    // attackTilesPerTick(): recomputed every call (not a flat per-troop
+    // rate) from the attacker's strength relative to the defender's whole
+    // remaining army, times the size of the contested border -- see
+    // src/config.js's combat section.
+    const border = attack.frontier.length + Math.floor(this.rng() * 5);
+    let budget;
+    if (defender) {
+      const ratio = Math.min(
+        ATTACK_BUDGET_CEIL,
+        Math.max(ATTACK_BUDGET_FLOOR, ((ATTACK_BUDGET_RATIO_SCALE * attack.troops) / Math.max(1, defender.troops)) * 2)
+      );
+      budget = ratio * border * ATTACK_BUDGET_PER_BORDER;
+    } else {
+      budget = border * NEUTRAL_BUDGET_PER_BORDER;
+    }
 
     let taken = 0;
     while (taken < budget && attack.frontier.length > 0) {
@@ -421,8 +483,9 @@ export class Game {
         continue;
       }
 
-      const cost = this.tileCost(tile, attack.targetId, attack.troops);
-      if (attack.troops < cost) {
+      const { attackerLoss, defenderLoss, tilesPerTickUsed } =
+        this.attackLogic(tile, attack.targetId, attack.troops, attack.attackerId);
+      if (attack.troops < attackerLoss) {
         // Might just be an expensive mountain -- try elsewhere a few times.
         attack.fails++;
         if (attack.fails > 25) break;
@@ -430,15 +493,14 @@ export class Game {
       }
       attack.fails = 0;
 
-      attack.troops -= cost;
-      if (defender) {
-        defender.killTroops(defender.density * DEFENDER_LOSS);
-      }
+      attack.troops -= attackerLoss;
+      if (defender) defender.killTroops(defenderLoss);
       this.setOwner(tile, attacker.id);
       this.#removeFrontier(attack, r);
-      // Rough ground eats more of the tick's tile budget, not just more
-      // troops -- terrain slows conquest down, it doesn't only tax it.
-      taken += TERRAIN_SPEED_COST[this.map.terrain[tile]];
+      // Rough ground (and a defended one) eats more of the tick's tile
+      // budget, not just more troops -- terrain slows conquest down, it
+      // doesn't only tax it.
+      taken += tilesPerTickUsed;
 
       // The new tile opens up more of the target's border.
       const n = this.map.neighbors(tile, this._nb);
@@ -491,7 +553,7 @@ export class Game {
       for (let k = 0; k < n; k++) {
         if (this.owner[nb[k]] === attack.attackerId) enclosed++;
       }
-      const affordable = attack.troops >= this.tileCost(tile, attack.targetId, attack.troops);
+      const affordable = attack.troops >= this.attackLogic(tile, attack.targetId, attack.troops, attack.attackerId).attackerLoss;
       const score = (affordable ? 1000 : 0) + enclosed;
       if (score > bestScore) {
         bestScore = score;
@@ -698,7 +760,6 @@ export class Game {
 
     victim.alive = false;
     victim.troops = 0;
-    victim.workers = 0;
 
     const loot = spoils >= 1 ? `, seizing ${Math.round(spoils).toLocaleString()} gold` : '';
     this.log(`${conqueror.name} surrounded and annexed ${victim.name}${loot}.`, conqueror.color);
@@ -845,9 +906,9 @@ export class Game {
     boat.done = true;
     const tile = boat.targetTile;
     const defenderId = this.owner[tile];
-    const cost = this.tileCost(tile, defenderId, boat.troops);
+    const { attackerLoss, defenderLoss } = this.attackLogic(tile, defenderId, boat.troops, boat.ownerId);
 
-    if (boat.troops <= cost) {
+    if (boat.troops <= attackerLoss) {
       // The landing is thrown back into the sea.
       if (defenderId >= 0) this.players[defenderId].killTroops(boat.troops * 0.4);
       this.pushEffect('splash', this.map.xOf(tile), this.map.yOf(tile), 6);
@@ -855,11 +916,11 @@ export class Game {
       return;
     }
 
-    if (defenderId >= 0) this.players[defenderId].killTroops(this.players[defenderId].density * DEFENDER_LOSS);
+    if (defenderId >= 0) this.players[defenderId].killTroops(defenderLoss);
     this.setOwner(tile, player.id);
     this.pushEffect('landing', this.map.xOf(tile), this.map.yOf(tile), 8);
 
-    const remaining = boat.troops - cost;
+    const remaining = boat.troops - attackerLoss;
     player.troops += remaining;
     this.launchAttack(player, defenderId, remaining);
     if (player.isHuman) this.log('Landing force has established a beachhead.', player.color);
@@ -1050,7 +1111,6 @@ export class Game {
       if (this.attacks.some((a) => a.attackerId === p.id && !a.done)) continue;
       p.alive = false;
       p.troops = 0;
-      p.workers = 0;
 
       // Whoever took the last tile carries off part of the treasury. Land
       // lost to a nuke points at NEUTRAL instead, so scorching a nation off

@@ -13,52 +13,126 @@ export const MOUNTAIN = 3;
 
 export const TERRAIN_NAMES = ['Ocean', 'Plains', 'Highland', 'Mountain'];
 
-// Flat troop cost of stepping onto the tile, before defender strength.
-export const TERRAIN_COST = [Infinity, 0.7, 1.5, 2.6];
-// Multiplier applied to the whole tile cost -- rough ground defends itself.
-export const TERRAIN_DEFENSE = [1, 1.0, 1.1, 1.3];
 /**
- * How much of an attack's per-tick tile budget (see ATTACK_BASE_TILES,
- * below) one tile of this terrain eats -- independent from TERRAIN_COST.
- * Rough ground is both pricier in troops *and* slower to cross, so a
- * mountain push visibly grinds even when troops are no object, instead of
- * only ever showing up as a bigger bill at the same pace as open plains.
+ * Terrain's two OpenFrontIO-exact numbers: `mag` (troop cost -- both sides'
+ * losses scale off it) and `speed` (how much of an attack's per-tick tile
+ * budget one tile eats -- see the attack-budget section, below).
+ * OpenFrontIO's own values are 80/100/120 for mag; rescaled here to
+ * OceanFront's population range (see the economy section's calibration
+ * note) by matching the two terms of the attacker-loss blend (below) in the
+ * same proportion at a representative mid-game nation -- the terrain
+ * *ratio* between Plains/Highland/Mountain (1 : 1.25 : 1.5) is unchanged.
+ * `speed` needs no rescaling: budget and pace-cost are both expressed in
+ * the same made-up "tile budget" unit OpenFrontIO invented, not troops, so
+ * its literal 16.5/20/25 ports as-is.
+ *
+ * Tuned down 25% from the first-pass calibration (6.0/7.5/9.0) after
+ * pacing-sweep showed a genuine war-of-attrition effect between evenly
+ * matched nations, not just a faster land-grab phase: overall match length
+ * grew noticeably on several size/difficulty combos (medium/easy nearly
+ * doubled, 5.1->10.3min) even though land was being claimed *faster* than
+ * before and no combo stalled or produced a sub-3-minute blowout.
+ * Re-verified via a full sweep after this cut.
  */
-export const TERRAIN_SPEED_COST = [Infinity, 1, 1.3, 1.7];
+export const TERRAIN_MAG = [Infinity, 4.5, 5.6, 6.75];
+export const TERRAIN_SPEED = [Infinity, 16.5, 20, 25];
+/** The Highland entry -- OpenFrontIO's own "100" -- used to normalize `mag`
+ *  back to its {0.8, 1.0, 1.2} terrain factor inside the cost formula,
+ *  below, so that shape survives TERRAIN_MAG being rescaled. */
+export const MAG_REFERENCE = 7.5;
 
 // ----------------------------------------------------------------- combat ---
+//
+// tileCost() (now attackLogic() -- see game.js) is ported from OpenFrontIO's
+// Config.ts attackLogic()/attackTilesPerTick(): both sides' losses and the
+// tile's share of an attack's per-tick budget all come from one call, using
+// terrain, defense-post proximity, traitor status and each side's share of
+// the map's land -- not a single flat troop price the way this used to
+// work. See the economy section, above, for the general calibration note;
+// combat-specific derivation notes are inline below.
 
-/** Effective troops-per-tile that unclaimed land defends itself with. */
-export const NEUTRAL_DENSITY = 1.1;
-/** How much a defender's troop density is worth per tile. */
-export const DEFENDER_STRENGTH = 1.15;
-/** Fraction of a defender's per-tile density that dies when a tile falls. */
-export const DEFENDER_LOSS = 0.85;
+/** Fraction of a defender's per-tile density that dies when a tile falls --
+ *  OpenFrontIO's own defenderTroopLoss is density with an implicit
+ *  coefficient of 1 (no separate discount the way this used to have). */
+export const DEFENDER_LOSS = 1;
 /**
- * A tile's cost is scaled by the *relative* strength of the attacking force
- * against the defender's whole remaining army (defender.troops / attack's
- * committed troops), clamped to this range -- a crushing numerical
- * advantage makes each tile cheaper (down to the floor); a close or losing
- * fight makes it costlier (up to the ceiling), the same way a real siege
- * goes faster the more it outnumbers its target and bogs down the more
- * evenly matched it is. The ratio is recomputed every tile taken, so it
- * shifts naturally as both sides' troops deplete over a multi-tile assault.
- * Only applies against a real defender -- unclaimed land has no army to be
- * relatively stronger or weaker than, so its cost is untouched by this.
+ * The attacker-loss blend is `0.6 * currentLoss + 0.4 * altLoss`, ported
+ * exactly: `currentLoss` scales with the *relative* strength of the
+ * attacking force against the defender's whole remaining army
+ * (defender.troops / attack's committed troops), clamped to
+ * COMBAT_RATIO_FLOOR/CEIL -- OpenFrontIO's own exact 0.6/2 bound (widened
+ * from this project's previously tuned-down 0.85/1.4, since a plain flat
+ * `mag` term now also anchors the low end so the widening doesn't repeat
+ * last round's pacing regression the same way -- re-verify via
+ * pacing-sweep regardless, the same diagnostic that caught it before).
+ * `altLoss` is density-based and needs no clamp of its own.
  */
-export const COMBAT_RATIO_FLOOR = 0.85;
-export const COMBAT_RATIO_CEIL = 1.4;
+export const COMBAT_RATIO_FLOOR = 0.6;
+export const COMBAT_RATIO_CEIL = 2;
+/**
+ * The pace side has its own, separate ratio clamp on `defender.troops /
+ * (5 * attackTroops)` -- OpenFrontIO's exact bound, new to this project
+ * (the old flat TERRAIN_SPEED_COST had no ratio sensitivity at all).
+ */
+export const PACE_RATIO_FLOOR = 0.2;
+export const PACE_RATIO_CEIL = 1.5;
 /**
  * Attacking a nation whose traitorScore is over TRAITOR_DISTRUST_LIMIT (see
- * the diplomacy section, below) costs this fraction of the usual price --
- * betraying an ally has a real combat cost, not just a reputational one.
+ * the diplomacy section, below) multiplies both the troop-loss blend and
+ * the pace term -- OpenFrontIO's exact traitorDefenseDebuff()/
+ * traitorSpeedDebuff() values (this project previously only had the cost
+ * side, at a gentler 0.85).
  */
-export const TRAITOR_COMBAT_DISCOUNT = 0.85;
-/** Attacks conquer at least this many tiles per tick... */
-export const ATTACK_BASE_TILES = 5;
-/** ...plus this many per committed troop, capped below. */
-export const ATTACK_TILES_PER_TROOP = 1 / 130;
-export const ATTACK_MAX_TILES = 150;
+export const TRAITOR_DEFENSE_DEBUFF = 0.5;
+export const TRAITOR_SPEED_DEBUFF = 0.8;
+/**
+ * Big-nation curve, ported from OpenFrontIO's defense-debuff sigmoid and
+ * its large-attacker bonus -- both rescaled from absolute tile counts to a
+ * *share of the map's land*, since OpenFrontIO's own 150,000/100,000-tile
+ * thresholds assume mega-nations that dwarf OceanFront's whole map.
+ * Expressed as a share, the same logistic curve, and the same 3:1
+ * midpoint:decay-scale ratio, apply at any map size. A defender's cost/pace
+ * eases from ~0.97x near 0 land down toward ~0.73x by VICTORY_LAND_SHARE
+ * (the curve's useful range spans almost exactly one match); an attacker
+ * past LARGE_ATTACKER_SHARE gets a matching discount, the necessary
+ * counterweight -- without it, a defender-only softening curve makes the
+ * endgame *harder* to finish as a nation grows, not easier, since it stacks
+ * against the flat `mag` term that has no size sensitivity of its own.
+ * Both reinforce, rather than fight, this project's existing density-based
+ * anti-snowball dynamic (a big, spread-thin nation is already cheaper per
+ * tile) -- they ease the flat `mag` floor specifically, once a nation is
+ * dominant enough that the density-only effect alone isn't easing it fast.
+ */
+export const DEFENSE_DEBUFF_MIDPOINT_SHARE = 0.3;
+export const DEFENSE_DEBUFF_DECAY = Math.LN2 / 0.1;
+export const LARGE_ATTACKER_SHARE = 0.2;
+/**
+ * Budget an attack gets to spend each tick, ported from OpenFrontIO's
+ * attackTilesPerTick(): a ratio of the attacking force to the defender's
+ * remaining army, clamped, times the size of the contested border (plus a
+ * little random jitter, same as OpenFrontIO's own +nextInt(0,5)) -- replaces
+ * the old flat ATTACK_BASE_TILES + troops*ATTACK_TILES_PER_TROOP shape,
+ * which had no defender-strength sensitivity at all. Against neutral land
+ * the ratio drops out entirely (there's no defender to be relatively
+ * stronger or weaker than), leaving a flat per-border-tile budget.
+ */
+export const ATTACK_BUDGET_RATIO_SCALE = 5;
+export const ATTACK_BUDGET_FLOOR = 0.01;
+export const ATTACK_BUDGET_CEIL = 0.5;
+export const ATTACK_BUDGET_PER_BORDER = 3;
+export const NEUTRAL_BUDGET_PER_BORDER = 2;
+/**
+ * Neutral land's own, simpler attacker-loss/pace shape (OpenFrontIO's
+ * TerraNullius branch) -- no ratio clamp and no defender loss, since there's
+ * no defender. NEUTRAL_PACE_SCALE replaces OpenFrontIO's literal 2000 (a
+ * budget-unit constant, not troop-denominated, but still needed rescaling
+ * against this project's much smaller typical attack sizes -- OpenFrontIO's
+ * value throttles pace hard above roughly 6,600 committed troops, which is
+ * this project's whole late-game range, not just its biggest pushes).
+ */
+export const NEUTRAL_PACE_SCALE = 180;
+export const NEUTRAL_PACE_FLOOR = 5;
+export const NEUTRAL_PACE_CEIL = 100;
 /** Troops refunded when an attack is called off manually. */
 export const RETREAT_REFUND = 0.75;
 /** An attack with fewer troops than this fizzles out. */
@@ -72,6 +146,12 @@ export const ATTACK_MIN_TROOPS = 8;
  * closes in on gaps as soon as they open up.
  */
 export const FRONTIER_SAMPLE_SIZE = 6;
+
+/** Standard logistic curve -- OpenFrontIO's own Util.ts sigmoid(), used by
+ *  the big-nation combat curve, above. */
+export function sigmoid(value, decayRate, midpoint) {
+  return 1 / (1 + Math.exp(-decayRate * (value - midpoint)));
+}
 
 // ------------------------------------------------------------------- ai ----
 // Bot target-selection thresholds. AiController tries these in priority
@@ -104,64 +184,81 @@ export const AI_BETRAYAL_WEAK_ALLY_RATIO = 0.2;
 export const AI_BETRAYAL_WEAK_ALLY_CHANCE = 0.15;
 
 // ---------------------------------------------------------------- economy ---
+//
+// Population is troops-only, matching OpenFrontIO's model exactly (no
+// separate worker class) -- ported from its Config.ts `maxTroops()`/
+// `troopIncreaseRate()`/`goldAdditionRate()`. OpenFront's own constants
+// (a flat 50,000-troop base, a 250,000-per-city bonus, mag values of
+// 80-120) are calibrated to its own much bigger map scale, where a single
+// mega-nation can own >100,000 tiles -- OceanFront's largest map has
+// ~87,600 total land tiles shared across up to 22 players. The formulas
+// below keep OpenFront's exact *shape* (the exponents, the multiplicative
+// structure); the constants were rescaled by anchoring at a ~2,000-tile
+// "typical mid-game nation" (the observed median size a few minutes into a
+// match) so density -- troops per tile, the one population-derived number
+// that actually reaches combat -- lands close to today's value there, then
+// cross-checked against this file's own already-tuned BUILDINGS.city
+// bonus: the independently-derived city-troop value came out within ~1.3x
+// of the existing constant, which is a real validation that this anchoring
+// approach is sound, not just a guess. Everything below is still a
+// *starting point*, tuned via tools/tests/pacing-sweep.mjs like every
+// other balance constant in this project -- the anchor just gives it a
+// much better-grounded starting point than a single-point fit would.
 
-export const BASE_POP = 300;
-export const POP_PER_TILE = 4.2;
-/** Logistic growth coefficient, per second. */
-export const POP_GROWTH = 0.075;
-/** Flat growth floor so tiny nations can still recover, per second. */
-export const POP_BASE_GROWTH = 8;
-/**
- * Population growth per second contributed by each tile held. Land already
- * sets the population *ceiling* (POP_PER_TILE, above); this ties it to the
- * *rate* as well, so a wide nation refills its army quickly after a war
- * instead of merely being able to hold a larger one. Growth is still split
- * by the troops/workers slider, so with the slider anywhere near its default
- * this reads in practice as "more land, faster troops".
- *
- * Note this deliberately feeds population growth rather than adding troops
- * directly: the MIGRATE_RATE rebalancer below continuously pulls the split
- * back toward the slider's ratio, so troops bolted on outside that flow just
- * leak away into workers again over the following seconds.
- */
-export const LAND_GROWTH = 0.03;
-/** Per-second shrink when population is over the cap (lost territory). */
-export const POP_DECAY = 0.06;
-/**
- * A large standing army pulls the troops/workers split further toward
- * troops than the slider alone asks for -- a big military snowballs instead
- * of growing at a flat rate. This has to work by shifting the *target* the
- * rebalancer (MIGRATE_RATE, below) pulls toward, not by adding troops on the
- * side: the rebalancer runs every tick and continuously corrects the split
- * back toward whatever ratio it's given, so troops added on top of that
- * would just leak back out into workers over time instead of compounding.
- *
- * The push approaches TROOP_MOMENTUM_CAP asymptotically as troops grow, at
- * the rate set by TROOP_MOMENTUM_SCALE (roughly the troop count at which
- * ~63% of the available headroom is used) -- never hitting a hard wall, so
- * a nation with 40,000 troops still keeps out-accelerating one with 15,000.
- * Real matches were sampled to size this: nations run from ~200 troops at
- * spawn up past 40,000 for a dominant empire by minute 10, so a linear rate
- * strong enough to matter early ends up flatly maxed out for most of the
- * game -- this curve stays meaningfully differentiated across that whole
- * range instead.
- */
-export const TROOP_MOMENTUM_SCALE = 12000;
-/** However large the army, the effective ratio never exceeds this -- some
- *  minimum worker base (and gold income) always survives. */
-export const TROOP_MOMENTUM_CAP = 0.97;
-/** How fast population re-balances toward the troop/worker slider, per second. */
-export const MIGRATE_RATE = 0.4;
+/** Troops formula: 2 * (TROOPS_TILE_SCALE * tiles^TROOPS_TILE_EXP +
+ *  TROOPS_BASE) + city bonus -- OpenFrontIO's exact sublinear shape, so
+ *  sprawl has diminishing returns instead of a flat per-tile rate. Sized so
+ *  maxTroops(2000 tiles) ~= 6,680, matching today's fixed-point troop cap
+ *  at that same tile count (~6,580, density ~3.3). */
+export const TROOPS_BASE = 470;
+export const TROOPS_TILE_SCALE = 30;
+export const TROOPS_TILE_EXP = 0.6; // OpenFrontIO's exact exponent, unscaled
+/** Flat troops-cap bonus per City owned (was BUILDINGS.city.popBonus=2200
+ *  -- the OpenFrontIO-shaped equivalent lands at ~1,900, within ~14% of the
+ *  existing value, which barely needs to move). */
+export const CITY_TROOP_BONUS = 1900;
 
 /**
- * Gold comes from workers, cities, ports and trade -- never from raw
- * territory. Holding land buys you an army (see LAND_GROWTH and POP_PER_TILE
- * above), not an income: getting rich means putting people to work and
- * building something, not simply sprawling.
+ * Growth is OpenFrontIO's exact self-limiting shape: a flat floor plus a
+ * sublinear function of current troops, scaled down as troops approach the
+ * cap, computed once per tick (confirmed from OpenFrontIO's own source: its
+ * ControlPanel multiplies this by 10 -- its own tick rate -- purely for
+ * display, the same relationship TICKS_PER_SECOND already has here, so this
+ * ports with no extra per-tick/per-second conversion). Sized so the time to
+ * refill an army from 10% to 90% of cap at the 2,000-tile anchor (~47s)
+ * matches today's (~46s) almost exactly; smaller nations refill somewhat
+ * faster and larger ones somewhat slower than today, which is the
+ * intended, deliberate effect of removing the flat land-driven growth term.
  */
-export const WORKER_GOLD = 0.011;
+export const TROOPS_GROWTH_BASE = 1.35; // per tick
+export const TROOPS_GROWTH_SCALE = 13;
+export const TROOPS_GROWTH_EXP = 0.73; // OpenFrontIO's exact exponent, unscaled
+/** Per-second shrink when troops are over the cap (lost territory) -- kept
+ *  as this project's own existing shape; OpenFrontIO's fetched source
+ *  doesn't show an over-cap decay path (likely lives in code not fetched
+ *  this round). */
+export const TROOPS_DECAY = 0.06;
 
-export const DEFAULT_TROOP_RATIO = 0.6;
+/**
+ * Gold, ported from OpenFrontIO's goldAdditionRate(): a flat per-tick
+ * trickle, not population-driven at all, on top of trade and city/port
+ * income (both already exist below as tradeIncome/goldBonus). Replaces the
+ * old WORKER_GOLD * workers term now that there are no workers -- sized
+ * against a measured baseline of what the worker term used to pay a
+ * mid-game nation (roughly 8-15 gold/s), landing early income close to
+ * today's and, true to OpenFrontIO's own shape, letting its *relative*
+ * weight shrink as trade and structures take over later in a match.
+ */
+export const GOLD_BASE_RATE = 1.2; // gold per tick (=12/s)
+
+/**
+ * Starting troops on spawn -- kept at the old troops-only figure (not
+ * troops+workers combined) so a fresh nation's density, and so how cheap it
+ * is to invade in the first seconds of a match, doesn't jump on its own.
+ */
+export const SPAWN_TROOPS = 220;
+export const SPAWN_GOLD = 150;
+
 export const DEFAULT_ATTACK_RATIO = 0.25;
 
 // -------------------------------------------------------------- buildings ---
@@ -173,10 +270,10 @@ export const BUILDINGS = {
     icon: '🏙',
     baseCost: 450,
     costStep: 400,
-    popBonus: 2200,
+    troopBonus: CITY_TROOP_BONUS,
     goldBonus: 0.8,
     spacing: 9,
-    desc: '+2,200 max population, +0.8 gold/s',
+    desc: '+2,200 max troops, +0.8 gold/s',
   },
   port: {
     key: 'port',
@@ -193,12 +290,18 @@ export const BUILDINGS = {
     key: 'defense',
     name: 'Defense Post',
     icon: '🛡',
-    baseCost: 550,
-    costStep: 300,
-    radius: 18,
-    defenseBonus: 1.4,
-    spacing: 11,
-    desc: 'Land within 18 tiles costs attackers 2.4× as much',
+    // OpenFrontIO's exact mechanic: a single flat bonus if any post is in
+    // range (not the old stacking +40%-per-post), so cost is bumped and
+    // spacing widened to match its own radius -- overlapping posts under a
+    // non-stacking bonus are pure waste, so tiling coverage rather than
+    // clustering it is now the efficient way to build them.
+    baseCost: 2200,
+    costStep: 1600,
+    radius: 30,
+    lossBonus: 5,
+    speedBonus: 3,
+    spacing: 30,
+    desc: 'Land within 30 tiles costs attackers 5× as much and falls 3× slower',
   },
   silo: {
     key: 'silo',
@@ -309,38 +412,48 @@ export const MAP_PRESETS = {
 };
 
 /**
- * Bot difficulty, chosen on the main menu. Scales bots on four axes: economy
- * (gold income and population growth -- always a felt difference, since it
- * doesn't depend on how a bot's own decision logic happens to play out),
- * aggression (the personality traits in AiController, so harder bots also
- * attack sooner and more often, not just with a bigger stack behind them),
- * thinkRange (ticks between re-evaluations -- how often a bot reconsiders
- * its posture and looks for a fight; this is the single biggest lever, since
- * it changes how fast a bot reacts to a weakening rival or an opening on the
- * frontier, not just how strong it is once it decides to act), and readiness
- * (the standing-army fullness a bot wants before committing to a fight --
- * lower means attacking sooner with a thinner army).
+ * Bot difficulty, chosen on the main menu. Scales bots on five axes:
+ * troopsCapMultiplier and troopsMultiplier (troop *cap* and troop *growth
+ * rate*, scaled separately -- OpenFrontIO's own maxTroops()/
+ * troopIncreaseRate() both take an independent difficulty multiplier, so
+ * this ports both rather than only growth), goldMultiplier (gold income --
+ * unrelated to troops now that the two are fully decoupled, kept as its own
+ * tuned dial, replacing the old single `economy` field), aggression (the
+ * personality traits in AiController, so harder bots also attack sooner and
+ * more often, not just with a bigger stack behind them), thinkRange (ticks
+ * between re-evaluations -- how often a bot reconsiders its posture and
+ * looks for a fight; this is the single biggest lever, since it changes how
+ * fast a bot reacts to a weakening rival or an opening on the frontier, not
+ * just how strong it is once it decides to act), and readiness (the
+ * standing-army fullness a bot wants before committing to a fight -- lower
+ * means attacking sooner with a thinner army).
+ * troopsCapMultiplier/troopsMultiplier map onto OpenFrontIO's own *outer*
+ * difficulty pair (its Easy/Impossible values, 0.5/0.9 and 1.25/1.05) rather
+ * than its middle tiers -- OceanFront's "hard" is deliberately stronger than
+ * a human opponent (matching the old economy=1.6 spirit) and "normal" is
+ * the documented unscaled baseline, the same role OpenFrontIO's own
+ * "Medium" (1.0/1.0) plays.
  * The human player is never affected by any of this -- it only ever scales
  * bots. 'normal' keeps the previous flat values (18-34 ticks, 0.45
- * readiness) as the unscaled baseline; 'economy'/'aggression' being 1/1 is
- * what keeps Normal's *strength* unchanged from before this tier existed --
- * it does not freeze the underlying decision logic itself, which improves
- * for every tier together.
+ * readiness) as the unscaled baseline; every multiplier being 1 is what
+ * keeps Normal's *strength* unchanged from before these tiers existed -- it
+ * does not freeze the underlying decision logic itself, which improves for
+ * every tier together.
  */
 export const DIFFICULTIES = {
   easy: {
     key: 'easy', label: 'Easy',
-    economy: 0.6, aggression: 0.6,
+    troopsCapMultiplier: 0.5, troopsMultiplier: 0.9, goldMultiplier: 0.6, aggression: 0.6,
     thinkRange: [32, 55], readiness: 0.55,
   },
   normal: {
     key: 'normal', label: 'Normal',
-    economy: 1, aggression: 1,
+    troopsCapMultiplier: 1, troopsMultiplier: 1, goldMultiplier: 1, aggression: 1,
     thinkRange: [18, 34], readiness: 0.45,
   },
   hard: {
     key: 'hard', label: 'Hard',
-    economy: 1.6, aggression: 1.45,
+    troopsCapMultiplier: 1.25, troopsMultiplier: 1.05, goldMultiplier: 1.6, aggression: 1.45,
     thinkRange: [10, 20], readiness: 0.35,
     // Refuses to launch a token attack under 20% of the target's troops
     // (unless already under attack itself) rather than waste a cycle

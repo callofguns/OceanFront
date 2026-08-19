@@ -49,13 +49,13 @@ export class UI {
     /** Reused DOM per nation / per offer -- see #refreshLeaderboard for why. */
     this.lbRows = new Map();
     this.offerRows = new Map();
-    /** Population bar elements -- static, queried once and reused every
-     *  refresh (~8x/sec) rather than re-looked-up, same reasoning as the
+    /** Troop bar elements -- static, queried once and reused every refresh
+     *  (~8x/sec) rather than re-looked-up, same reasoning as the
      *  leaderboard rows: a node swapped out mid-tap can silently drop it. */
     this.popBarEls = {
       bar: $('pop-bar'),
       troops: $('pop-bar-troops'),
-      workers: $('pop-bar-workers'),
+      attacking: $('pop-bar-attacking'),
       pop: $('stat-pop'),
       max: $('stat-pop-max'),
       rate: $('stat-pop-rate'),
@@ -308,12 +308,6 @@ export class UI {
       $('attack-ratio-value').textContent = `${attack.value}%`;
     });
 
-    const troop = $('troop-ratio');
-    troop.addEventListener('input', () => {
-      this.game.human.troopRatio = Number(troop.value) / 100;
-      $('troop-ratio-value').textContent = `${troop.value}% troops`;
-    });
-
     $('btn-nuke').addEventListener('click', () => this.#toggleNukeMode());
     $('btn-retreat').addEventListener('click', () => {
       const back = this.game.cancelAttacks(this.game.human);
@@ -332,11 +326,8 @@ export class UI {
   #syncSliders() {
     const human = this.game.human;
     const attack = Math.round(human.attackRatio * 100);
-    const troop = Math.round(human.troopRatio * 100);
     $('attack-ratio').value = String(attack);
     $('attack-ratio-value').textContent = `${attack}%`;
-    $('troop-ratio').value = String(troop);
-    $('troop-ratio-value').textContent = `${troop}% troops`;
   }
 
   // --------------------------------------------------------------- modes ---
@@ -726,10 +717,14 @@ export class UI {
     const human = game.human;
 
     $('stat-troops').textContent = formatShort(human.troops);
-    this.#refreshAttackingStat(game, human);
-    $('stat-workers').textContent = formatShort(human.workers);
-    this.#refreshPopBar(human);
-    $('stat-gold').textContent = `${formatShort(human.gold)}  (+${human.goldPerSecond.toFixed(1)}/s)`;
+    const committed = this.#committedTroops(game, human);
+    this.#refreshAttackingStat(committed);
+    this.#refreshPopBar(human, committed);
+    // Whole gold/sec, not tenths -- income is a bigger, steadier number now
+    // that gold trickles in at a flat rate (see GOLD_BASE_RATE) rather than
+    // fluctuating with a worker headcount, so a decimal no longer earns its
+    // width in the topbar.
+    $('stat-gold').textContent = `${formatShort(human.gold)}  (+${Math.round(human.goldPerSecond)}/s)`;
     $('stat-land').textContent = `${(game.landShare(human) * 100).toFixed(1)}%`;
 
     this.#refreshBuildCosts(human);
@@ -739,42 +734,47 @@ export class UI {
     this.#refreshAttackHint(game, human);
   }
 
-  /** Troops currently spent on attacks or a naval invasion -- committed and
-   *  unavailable elsewhere, shown as a small separate number next to the
-   *  standing-army total. Hidden entirely when nothing is under way. */
-  #refreshAttackingStat(game, human) {
+  /** Troops currently committed to attacks or a naval invasion -- shared by
+   *  the small standing-army stat and the troop bar's second segment. */
+  #committedTroops(game, human) {
     let committed = 0;
     for (const a of game.attacksBy(human.id)) committed += a.troops;
     for (const b of game.boats) if (b.ownerId === human.id) committed += b.troops;
+    return committed;
+  }
 
+  /** Small number next to the standing-army total -- hidden entirely when
+   *  nothing is under way. */
+  #refreshAttackingStat(committed) {
     const el = $('stat-attacking');
     el.hidden = committed < 1;
     if (!el.hidden) el.textContent = formatShort(committed);
   }
 
   /**
-   * Population-cap fill bar: two stacked segments (troops, then workers)
-   * sized to pop/maxPop, clamped and composed the same way OpenFrontIO's
-   * troop bar is -- a fixed-size base, each segment's raw percentage clamped
-   * to [0, 100], and the second clamped again to what's left after the
-   * first. `transform`-only updates (no layout) since this runs ~8x/sec.
+   * Troop-cap fill bar, matching OpenFrontIO's own troop bar exactly: two
+   * stacked segments against maxTroops -- standing troops, then troops
+   * currently committed to attacks -- clamped and composed the same way
+   * theirs is (a fixed-size base, each segment's raw percentage clamped to
+   * [0, 100], and the second clamped again to what's left after the
+   * first). `transform`-only updates (no layout) since this runs ~8x/sec.
    */
-  #refreshPopBar(human) {
+  #refreshPopBar(human, committed) {
     const els = this.popBarEls;
-    const base = Math.max(human.maxPop, 1);
+    const base = Math.max(human.maxTroops, 1);
     const troopPct = Math.max(0, Math.min(100, (human.troops / base) * 100));
-    const workerPct = Math.max(0, Math.min(100 - troopPct, (human.workers / base) * 100));
+    const attackingPct = Math.max(0, Math.min(100 - troopPct, (committed / base) * 100));
 
     els.troops.style.transform = `scaleX(${troopPct / 100})`;
-    els.workers.style.transform = `translateX(${troopPct}%) scaleX(${workerPct / 100})`;
-    els.bar.classList.toggle('is-over', human.pop > human.maxPop);
+    els.attacking.style.transform = `translateX(${troopPct}%) scaleX(${attackingPct / 100})`;
+    els.bar.classList.toggle('is-over', human.troops > human.maxTroops);
 
     // Current at the bar's left edge, cap at its right edge, no separator --
     // mirrors OpenFrontIO's mobile troop bar layout exactly (its desktop
     // variant centers "current / max" instead, but at this bar's ~150px
     // width edge-anchored reads more clearly than a centered fraction).
-    els.pop.textContent = formatShort(human.pop);
-    els.max.textContent = formatShort(human.maxPop);
+    els.pop.textContent = formatShort(human.troops);
+    els.max.textContent = formatShort(human.maxTroops);
 
     // formatShort() only handles non-negative magnitudes (nothing before
     // this called it with a negative number), so the sign is applied here

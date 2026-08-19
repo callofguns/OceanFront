@@ -139,12 +139,12 @@ html, body {
 }
 .stat-attacking::before { content: "⚔ "; }
 
-/* Population-cap bar: a bordered track with two stacked fill segments
-   (troops, then workers, in that order) sized to pop/maxPop, plus the
-   current/max numbers overlaid on top -- modelled on OpenFrontIO's troop
-   bar. Both fills are full-width, transform-origin: left, and driven purely
-   by `transform` from src/ui.js's #refreshPopBar so a refresh (~8x/sec)
-   never touches layout. */
+/* Troop-cap bar: a bordered track with two stacked fill segments (standing
+   troops, then troops committed to attacks, in that order) sized to
+   troops/maxTroops, plus the current/max numbers overlaid on top -- matches
+   OpenFrontIO's own troop bar exactly, not just its layout. Both fills are
+   full-width, transform-origin: left, and driven purely by `transform` from
+   src/ui.js's #refreshPopBar so a refresh (~8x/sec) never touches layout. */
 .stat.pop { flex: 1; min-width: 120px; max-width: 220px; }
 .stat-label b {
   margin-left: 5px;
@@ -162,10 +162,11 @@ html, body {
   border: 1px solid var(--edge);
   background: rgba(5, 13, 22, 0.7);
 }
-/* Population can exceed the cap right after losing land, then decays back
-   down (see Player#updateEconomy) -- OpenFrontIO's troops have no such
-   state. The fill still just clamps at 100%; the border turns danger-red so
-   an overfull, shrinking nation doesn't look identical to a full one. */
+/* Troops can exceed the cap right after losing land, then decay back down
+   (see Player#updateEconomy) -- kept as this project's own extra state
+   OpenFrontIO's fetched source doesn't show. The fill still just clamps at
+   100%; the border turns danger-red so an overfull, shrinking nation
+   doesn't look identical to a full one. */
 .popbar.is-over { border-color: var(--danger); }
 .popbar-fill {
   position: absolute;
@@ -176,7 +177,10 @@ html, body {
   transition: transform 0.2s ease-out;
 }
 .popbar-fill.troops { background: var(--accent); }
-.popbar-fill.workers { background: rgba(255, 200, 97, 0.55); }
+/* Troops committed to attacks -- danger-red, matching what the small
+   .stat-attacking number next to the plain Troops stat already uses for
+   the same concept. */
+.popbar-fill.attacking { background: rgba(255, 123, 107, 0.6); }
 .popbar-text {
   position: absolute;
   inset: 0;
@@ -743,28 +747,24 @@ input[type="range"]::-moz-range-thumb {
   #sheet-backdrop { display: block; }
   #hud.has-open-sheet #sheet-backdrop { opacity: 1; pointer-events: auto; }
 
-  /* The topbar loses its least essential stat and shrinks to fit small
-     screens; troops, the population bar, gold and territory are what you
-     actually watch. */
+  /* The topbar shrinks to fit small screens; troops, the army bar, gold and
+     territory are what you actually watch. #topbar's children are .brand,
+     then the four .stat blocks in DOM order (Troops, Army, Gold, Territory),
+     then .spacer/.speed -- there's no longer a Workers stat to hide here
+     (removed along with the troops/workers split), so this tier shows
+     everything, just smaller; the <=480px tier below is where stats start
+     getting dropped. */
   .brand span { display: none; }
   #topbar { gap: 12px; padding: 0 12px; }
-  /* #topbar's children are .brand, then the five .stat blocks in DOM order
-     (Troops, Workers, Population, Gold, Territory), then .spacer/.speed --
-     nth-child counts against all of those, not just the stats, so position 3
-     is Workers. The population bar already shows the troops/workers split
-     as its two fill segments, so the standalone Workers number is what's
-     redundant here, not Population -- Troops/Population/Gold/Territory stay
-     visible. */
-  .stat:nth-child(3) { display: none; }
   .stat-value { font-size: 14px; }
   .stat.pop { min-width: 90px; }
-  /* "Population +N/s" is the longest label in the topbar by a wide margin,
-     and .stat.pop is the one flex item that gets squeezed under pressure
-     (flex-shrink applies to every stat here, but the others' short fixed
-     words never run out of room the way this one, with its appended rate
-     chip, can at in-between phone widths). Ellipsis it rather than letting
-     it spill into the Gold stat next to it -- a safety net for widths this
-     breakpoint alone doesn't already handle explicitly (see <=400px below,
+  /* "Army +N/s" plus its rate chip is the longest label in the topbar by a
+     wide margin, and .stat.pop is the one flex item that gets squeezed
+     under pressure (flex-shrink applies to every stat here, but the
+     others' short fixed words never run out of room the way this one can
+     at in-between phone widths). Ellipsis it rather than letting it spill
+     into the Gold stat next to it -- a safety net for widths this
+     breakpoint alone doesn't already handle explicitly (see <=480px below,
      which drops the label outright once there's truly no room for it). */
   .stat.pop .stat-label { overflow: hidden; text-overflow: ellipsis; }
   .speed-btn { height: 40px; min-width: 44px; }
@@ -830,25 +830,28 @@ input[type="range"]::-moz-range-thumb {
   /* Narrow phones -- this covers essentially the whole real phone-portrait
      range (iPhone SE 375 through the 428-430px Pro Max/large-Android band),
      not just the smallest ones: even at 430px the row still doesn't fit
-     with Troops, Territory and the population label all shown, and letting
+     with Troops, Territory and the army bar's label all shown, and letting
      it overflow anyway was pushing the pause/speed buttons off-screen
      entirely rather than just looking cramped -- a real tap-target
-     regression, not a cosmetic one. Down to the population bar
-     (which already carries the standing-army number as its troops segment)
-     and Gold. Troops' own text stat -- and with it #stat-attacking, the
+     regression, not a cosmetic one. Down to the army bar (which already
+     carries the standing-army number as its troops segment) and Gold.
+     Troops' own text stat -- and with it #stat-attacking, the
      committed-troops indicator -- is the one that goes here; it's the most
-     redundant against the bar of anything still visible at this width. */
+     redundant against the bar of anything still visible at this width.
+     #topbar's children are .brand, then the four .stat blocks in DOM order
+     (Troops, Army, Gold, Territory), then .spacer/.speed -- Territory is
+     nth-child(5) now that there's no Workers stat ahead of it. */
   #topbar { gap: 6px; padding: 0 8px; }
   .stat:nth-child(2) { display: none; } /* Troops */
-  .stat:nth-child(6) { display: none; } /* Territory */
+  .stat:nth-child(5) { display: none; } /* Territory */
   .stat.pop { min-width: 58px; max-width: 110px; }
-  /* "Population +N/s" doesn't fit this tier's ~60-110px box and, being a
-     flex child of a nowrap-inheriting row, overflows instead of wrapping --
+  /* "Army +N/s" doesn't fit this tier's ~60-110px box and, being a flex
+     child of a nowrap-inheriting row, overflows instead of wrapping --
      drop the label text here and keep just the bar; its title attribute and
      the numbers overlaid on it still say what it is. At this width there
      isn't room to show current and max legibly side by side either
      (they end up touching) -- the fill itself already reads as "how full",
-     so only the current-population number stays, centred. */
+     so only the current-troops number stays, centred. */
   .stat.pop .stat-label { display: none; }
   .stat.pop #stat-pop-max { display: none; }
   .stat.pop .popbar-text { justify-content: center; }
