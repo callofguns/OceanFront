@@ -93,12 +93,12 @@ const econ = await page.evaluate(() => {
   const g = window.OceanFront.game;
   return {
     gold: Math.round(g.human.gold),
-    pop: Math.round(g.human.pop),
+    troops: Math.round(g.human.troops),
     income: +g.human.goldPerSecond.toFixed(2),
     ticks: g.tickCount,
   };
 });
-console.log(`  after ${econ.ticks} ticks: ${econ.gold} gold (+${econ.income}/s), pop ${econ.pop}`);
+console.log(`  after ${econ.ticks} ticks: ${econ.gold} gold (+${econ.income}/s), troops ${econ.troops}`);
 if (econ.gold > 150) ok('gold is accumulating');
 else bad(`gold did not grow (${econ.gold})`);
 if (econ.ticks > 50) ok('simulation is ticking');

@@ -1,7 +1,6 @@
 // Playwright verification for bot difficulty + the attacking-troops HUD stat:
 //  1. Attacking-troops HUD stat appears/updates during a live attack, hides when idle.
-//  2. Troop/worker slider DOM bounds are 25/75 and clamp correctly.
-//  3. Difficulty picker renders, persists via localStorage, and reaches Game/AiController.
+//  2. Difficulty picker renders, persists via localStorage, and reaches Game/AiController.
 // Run the dev server first (`npm start`), then this script.
 import { chromium } from './lib/browser.mjs';
 
@@ -38,7 +37,7 @@ async function startMatch(page, { difficulty, seed } = {}) {
   await page.waitForTimeout(400);
 }
 
-// ---------------------------------------------------------------- Part 1: picker UI + slider bounds
+// ---------------------------------------------------------------- Part 1: picker UI
 {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   await page.goto(BASE);
@@ -52,13 +51,6 @@ async function startMatch(page, { difficulty, seed } = {}) {
     'difficulty picker shows Easy/Normal/Hard',
     picker.some((t) => t.includes('Easy')) && picker.some((t) => t.includes('Normal')) && picker.some((t) => t.includes('Hard'))
   );
-
-  const sliderBounds = await page.evaluate(() => {
-    const el = document.getElementById('troop-ratio');
-    return { min: el.min, max: el.max };
-  });
-  check('slider DOM min=25', sliderBounds.min === '25');
-  check('slider DOM max=75', sliderBounds.max === '75');
   await page.close();
 }
 
@@ -105,8 +97,10 @@ async function startMatch(page, { difficulty, seed } = {}) {
       if (!g) return null;
       const bots = g.players.filter((p) => p.ai && p !== g.human);
       const avgAggr = bots.reduce((s, b) => s + b.ai.aggression, 0) / bots.length;
-      const avgEcon = bots.reduce((s, b) => s + b.economyMultiplier, 0) / bots.length;
-      return { difficulty: g.difficulty, avgAggr, avgEcon, botCount: bots.length };
+      const avgGold = bots.reduce((s, b) => s + b.goldMultiplier, 0) / bots.length;
+      const avgCap = bots.reduce((s, b) => s + b.troopsCapMultiplier, 0) / bots.length;
+      const avgGrowth = bots.reduce((s, b) => s + b.troopsMultiplier, 0) / bots.length;
+      return { difficulty: g.difficulty, avgAggr, avgGold, avgCap, avgGrowth, botCount: bots.length };
     });
     results[diff] = info;
     await page.close();
@@ -118,8 +112,16 @@ async function startMatch(page, { difficulty, seed } = {}) {
     results.easy?.avgAggr < results.normal?.avgAggr && results.normal?.avgAggr < results.hard?.avgAggr
   );
   check(
-    'avg bot economyMultiplier strictly increases easy < normal < hard',
-    results.easy?.avgEcon < results.normal?.avgEcon && results.normal?.avgEcon < results.hard?.avgEcon
+    'avg bot goldMultiplier strictly increases easy < normal < hard',
+    results.easy?.avgGold < results.normal?.avgGold && results.normal?.avgGold < results.hard?.avgGold
+  );
+  check(
+    'avg bot troopsCapMultiplier strictly increases easy < normal < hard',
+    results.easy?.avgCap < results.normal?.avgCap && results.normal?.avgCap < results.hard?.avgCap
+  );
+  check(
+    'avg bot troopsMultiplier (growth rate) strictly increases easy < normal < hard',
+    results.easy?.avgGrowth < results.normal?.avgGrowth && results.normal?.avgGrowth < results.hard?.avgGrowth
   );
 }
 

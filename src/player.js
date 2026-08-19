@@ -1,19 +1,17 @@
-// A nation: its land, its population split between troops and workers, its
+// A nation: its land, its troops (population is troops-only, matching
+// OpenFrontIO's model -- see src/config.js's economy section), its
 // treasury and its structures.
 
 import {
-  BASE_POP,
-  POP_PER_TILE,
-  POP_GROWTH,
-  POP_BASE_GROWTH,
-  POP_DECAY,
-  LAND_GROWTH,
-  MIGRATE_RATE,
-  TROOP_MOMENTUM_SCALE,
-  TROOP_MOMENTUM_CAP,
-  WORKER_GOLD,
+  TROOPS_BASE,
+  TROOPS_TILE_SCALE,
+  TROOPS_TILE_EXP,
+  TROOPS_GROWTH_BASE,
+  TROOPS_GROWTH_SCALE,
+  TROOPS_GROWTH_EXP,
+  TROOPS_DECAY,
+  GOLD_BASE_RATE,
   TICKS_PER_SECOND,
-  DEFAULT_TROOP_RATIO,
   DEFAULT_ATTACK_RATIO,
   BUILDINGS,
 } from './config.js';
@@ -28,10 +26,8 @@ export class Player {
 
     this.tiles = new Set();
     this.troops = 0;
-    this.workers = 0;
     this.gold = 0;
 
-    this.troopRatio = DEFAULT_TROOP_RATIO;
     this.attackRatio = DEFAULT_ATTACK_RATIO;
 
     /** Structures owned, in build order. */
@@ -53,13 +49,18 @@ export class Player {
     this.ai = null;
     this.peakTiles = 0;
 
-    /** Bot-difficulty scaling for gold income and population growth. Always
-     *  1 for the human player -- difficulty only ever affects bots. */
-    this.economyMultiplier = 1;
+    /** Bot-difficulty scaling for troop cap, troop growth and gold income,
+     *  kept separate now that they're fully decoupled (see DIFFICULTIES in
+     *  config.js). Always 1 for the human player -- difficulty only ever
+     *  affects bots. */
+    this.troopsCapMultiplier = 1;
+    this.troopsMultiplier = 1;
+    this.goldMultiplier = 1;
 
-    /** Population gained (or lost, while decaying over the cap) per game
-     *  second, measured directly off updateEconomy()'s own before/after pop
-     *  rather than re-derived -- shown next to the HUD population bar. */
+    /** Troops gained (or lost, while decaying over the cap) per game
+     *  second, measured directly off updateEconomy()'s own before/after
+     *  troop count rather than re-derived -- shown next to the HUD troop
+     *  bar. */
     this.popRate = 0;
 
     /** Who most recently took a tile from us. Whoever holds this when the
@@ -67,10 +68,6 @@ export class Player {
      *  it stays NEUTRAL if the land was lost to a nuke rather than a nation,
      *  so scorching someone off the map earns no spoils. */
     this.lastConquerorId = -1;
-  }
-
-  get pop() {
-    return this.troops + this.workers;
   }
 
   get tileCount() {
@@ -82,36 +79,46 @@ export class Player {
     return this.tiles.size > 0 ? this.troops / this.tiles.size : 0;
   }
 
-  get maxPop() {
-    return BASE_POP + this.tiles.size * POP_PER_TILE + this.buildingCounts.city * BUILDINGS.city.popBonus;
-  }
-
   /**
-   * The troop share actually being grown/rebalanced toward, this tick --
-   * the slider's troopRatio, plus a push proportional to how many troops
-   * you already have. This is what makes a big army snowball: more troops
-   * raises the target, which pulls even more of new growth (and existing
-   * workers) into troops, which raises the target further next tick.
+   * Troop cap, ported from OpenFrontIO's maxTroops(): a sublinear function
+   * of tiles held (diminishing returns on sprawl, unlike the old flat
+   * per-tile rate) plus a flat bonus per City. See src/config.js's economy
+   * section for the exact constants and how they were scaled.
    */
-  get effectiveTroopRatio() {
-    const headroom = TROOP_MOMENTUM_CAP - this.troopRatio;
-    if (headroom <= 0) return this.troopRatio;
-    const bonus = headroom * (1 - Math.exp(-this.troops / TROOP_MOMENTUM_SCALE));
-    return this.troopRatio + bonus;
+  get maxTroops() {
+    return (2 * (TROOPS_TILE_SCALE * this.tiles.size ** TROOPS_TILE_EXP + TROOPS_BASE)
+      + this.buildingCounts.city * BUILDINGS.city.troopBonus) * this.troopsCapMultiplier;
   }
 
   /**
-   * Territory pays nothing by itself -- gold comes from workers, cities,
-   * ports and trade. Land is the military engine (see LAND_GROWTH); this is
-   * the economic one, and the two are deliberately separate.
+   * Standing army as a share of this nation's own cap -- how full, not how
+   * big. Unlike `density`, this stays meaningful for comparing nations of
+   * very different sizes: maxTroops is now a sublinear function of tiles
+   * (see above), so two equally-committed nations of different sizes settle
+   * at different equilibrium densities on their own, purely from size, not
+   * from how militarized either one actually is. AiController uses this,
+   * not density, wherever the question is "how strong is this nation for
+   * its own size" rather than "how much would this tile actually cost to
+   * take" (the latter is what density itself still correctly measures, via
+   * Game#attackLogic).
+   */
+  get fillRatio() {
+    return this.troops / Math.max(1, this.maxTroops);
+  }
+
+  /**
+   * Gold, ported from OpenFrontIO's goldAdditionRate(): a flat per-tick
+   * trickle -- not population-driven at all -- plus port/city bonuses and
+   * trade income. Territory itself still pays nothing directly; it buys an
+   * army (maxTroops, above), not income.
    */
   get goldPerSecond() {
     const income =
-      this.workers * WORKER_GOLD +
+      GOLD_BASE_RATE * TICKS_PER_SECOND +
       this.buildingCounts.port * BUILDINGS.port.goldBonus +
       this.buildingCounts.city * BUILDINGS.city.goldBonus +
       this.tradeIncome;
-    return income * this.economyMultiplier;
+    return income * this.goldMultiplier;
   }
 
   countOf(key) {
@@ -127,53 +134,36 @@ export class Player {
     this.tiles.delete(i);
   }
 
-  /** One simulation tick of population growth, migration and income. */
+  /**
+   * One simulation tick of troop growth (or over-cap decay) and income.
+   * Growth is OpenFrontIO's exact self-limiting shape, ported from
+   * troopIncreaseRate() -- a flat floor plus a sublinear function of
+   * current troops, scaled toward zero as troops approach the cap. It's
+   * already a per-tick formula in OpenFrontIO (confirmed from its own
+   * source -- see src/config.js), so no extra per-tick/per-second
+   * conversion is needed here.
+   */
   updateEconomy() {
-    const popBefore = this.pop;
-    const cap = this.maxPop;
-    const pop = this.pop;
-    // Computed once and reused for both steps below, so growth and
-    // rebalancing always agree on where troops are headed this tick.
-    const ratio = this.effectiveTroopRatio;
+    const max = this.maxTroops;
 
-    if (pop < cap) {
-      // Territory feeds the growth rate, not just the ceiling -- a wide
-      // nation rebuilds its army fast rather than only being able to hold a
-      // bigger one.
-      const rate = pop * POP_GROWTH + POP_BASE_GROWTH + this.tiles.size * LAND_GROWTH;
-      // economyMultiplier scales bot difficulty (always 1 for the human).
-      // Only growth is scaled, not the decay branch below -- a harder bot
-      // should build up faster, not merely fall apart slower after losing
-      // land, and vice versa for easy.
-      const growth = ((rate * (1 - pop / cap)) / TICKS_PER_SECOND) * this.economyMultiplier;
-      // New population enters on the side the slider (plus troop momentum)
-      // is calling for.
-      this.troops += growth * ratio;
-      this.workers += growth * (1 - ratio);
-    } else if (pop > cap) {
+    if (this.troops < max) {
+      const toAdd = (TROOPS_GROWTH_BASE + this.troops ** TROOPS_GROWTH_EXP / TROOPS_GROWTH_SCALE)
+        * (1 - this.troops / max) * this.troopsMultiplier;
+      this.troops += toAdd;
+      this.popRate = toAdd * TICKS_PER_SECOND;
+    } else if (this.troops > max) {
       // Overpopulated after losing land: shrink back down toward the cap.
-      const decay = ((pop - cap) * POP_DECAY) / TICKS_PER_SECOND;
-      const total = pop || 1;
-      this.troops = Math.max(0, this.troops - decay * (this.troops / total));
-      this.workers = Math.max(0, this.workers - decay * (this.workers / total));
+      // OpenFrontIO's fetched source has no equivalent path (population
+      // there presumably never exceeds an instantaneously-recomputed cap
+      // the way it can here) -- kept as this project's own existing shape.
+      const decay = ((this.troops - max) * TROOPS_DECAY) / TICKS_PER_SECOND;
+      this.troops = Math.max(max, this.troops - decay);
+      this.popRate = -decay * TICKS_PER_SECOND;
+    } else {
+      this.popRate = 0;
     }
 
-    // Re-balance existing population toward the requested split.
-    const desiredTroops = this.pop * ratio;
-    let move = ((desiredTroops - this.troops) * MIGRATE_RATE) / TICKS_PER_SECOND;
-    if (move > this.workers) move = this.workers;
-    if (-move > this.troops) move = -this.troops;
-    this.troops += move;
-    this.workers -= move;
-
     if (this.troops < 0) this.troops = 0;
-    if (this.workers < 0) this.workers = 0;
-
-    // Re-balancing above moves population between troops/workers but never
-    // changes the total, so this delta is purely the growth/decay branches
-    // -- measuring it here instead of re-deriving the formula stays correct
-    // automatically if that formula ever changes again.
-    this.popRate = (this.pop - popBefore) * TICKS_PER_SECOND;
 
     this.gold += this.goldPerSecond / TICKS_PER_SECOND;
   }
@@ -185,11 +175,8 @@ export class Player {
     return taken;
   }
 
-  /** Casualties, applied to troops first and then to the civilian population. */
+  /** Casualties. */
   killTroops(amount) {
-    const fromTroops = Math.min(this.troops, amount);
-    this.troops -= fromTroops;
-    const rest = amount - fromTroops;
-    if (rest > 0) this.workers = Math.max(0, this.workers - rest);
+    this.troops = Math.max(0, this.troops - amount);
   }
 }

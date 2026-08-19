@@ -17,29 +17,29 @@ Then open <http://localhost:8080> and pick a spot on the map.
 
 ## How it plays
 
-You start with a handful of tiles and a small population. Everything follows
-from two decisions you keep making: **how much of your population carries a
-rifle instead of earning gold**, and **where you point it**.
+You start with a handful of tiles and a small army. Everything follows from
+one core decision you keep making: **where you point your troops**.
 
 **Expanding.** Click any land you don't own and your troops pour across the
 border. Attacks target a *nation*, not a tile — click anywhere Meridia owns and
-the whole shared border lights up. Each tile costs troops to take, scaled by the
-defender's troop density and the terrain: open plains are cheap, mountains are
-brutal. Unclaimed grey land is the cheapest thing on the map, which is why the
-opening minutes are a land grab.
+the whole shared border lights up. Each tile costs troops to take, scaled by
+the defender's strength relative to your own committed force, the terrain, and
+how much of the map either side already holds: open plains are cheap,
+mountains are brutal, and a crushing numerical advantage makes conquest both
+cheaper and faster than an even fight does. Unclaimed grey land is the
+cheapest thing on the map, which is why the opening minutes are a land grab.
 
-**Earning.** Population splits between troops and workers on the bottom slider,
-anywhere from 25% to 75% either way. Workers generate gold and nothing else;
-troops take and hold ground and generate nothing. Sitting near 75% troops makes
-you dangerous and poor. Sitting near 25% makes you rich and someone else's next
-meal.
+**Growing.** There's no split between troops and civilians — your whole
+population *is* your army. Every tile you hold raises your troop cap, with
+diminishing returns the wider you sprawl: doubling a small nation's land
+roughly doubles its cap, but doubling a huge one barely nudges it, so cities
+matter more than sheer tile count once you're big. Troops regrow on their own
+toward that cap, faster the further below it you are.
 
 Land and gold pull on different levers, and deliberately do not overlap.
-Territory is the *military* engine: every tile raises your population ceiling
-and speeds up how fast that population regrows, so a wide nation rebuilds a
-shattered army far quicker than a small one can. Territory pays no gold at all.
-Gold comes from workers, cities, ports and trade — getting rich means putting
-people to work and building something, not simply sprawling.
+Territory pays no gold at all — it buys you an army, not an income. Gold
+trickles in on its own and stacks with cities, ports and trade routes, so
+getting rich means building something, not simply sprawling.
 
 **Surrounding.** Anything completely boxed in by a single nation falls to it for
 free; once you have surrounded something there is no fight left to have. An
@@ -53,9 +53,9 @@ nation's last tile in ordinary combat hands you half.
 
 | Structure | Effect |
 | --- | --- |
-| 🏙 City | +2,200 max population, +0.8 gold/s |
+| 🏙 City | +2,200 max troops, +0.8 gold/s |
 | ⚓ Port | +6 gold/s, opens sea trade, doubles boat range |
-| 🛡 Defense Post | Land within 18 tiles costs attackers 2.4× as much |
+| 🛡 Defense Post | Land within 30 tiles costs attackers 5× as much and falls 3× slower |
 | 🚀 Missile Silo | Unlocks nuclear strikes anywhere on the map |
 | 📡 SAM Launcher | Intercepts missiles aimed within 46 tiles |
 
@@ -90,7 +90,7 @@ decays. The AI plays the same game, including turning on you.
 
 **On a phone or tablet:** tap to attack, place structures and spawn, same as
 clicking. Drag one finger to pan, pinch with two to zoom. The build menu,
-leaderboard and sliders live behind three tabs at the bottom of the screen —
+leaderboard and attack-force slider live behind three tabs at the bottom of the screen —
 tap a tab to open it as a sheet over the map, tap it again (or tap the map)
 to close it. Picking a structure to build closes the sheet automatically so
 the map underneath is reachable to place it.
@@ -127,7 +127,7 @@ src/
   config.js       every balance constant in one table
   rng.js          seeded RNG and value noise
   map.js          island generation, ocean labelling, spawn selection
-  player.js       population, troop/worker split, income
+  player.js       troops, troop cap and growth, income
   game.js         tick loop, combat, encirclement, boats, missiles, trade
   diplomacy.js    alliances, offers, betrayal and reputation
   ai.js           bot personalities and decision-making

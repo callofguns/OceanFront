@@ -2,9 +2,21 @@
 // main menu. CURRENT_VERSION drives the visible tag -- bump it whenever a
 // new entry is added below. Newest first.
 
-export const CURRENT_VERSION = 'v1.6.0-beta';
+export const CURRENT_VERSION = 'v2.0.0-beta';
 
 export const CHANGELOG = [
+  {
+    version: 'v2.0.0-beta',
+    notes: [
+      'No more troops-vs-workers split — your whole population is your army now. Land raises your troop cap with real diminishing returns on sprawl, so cities matter more once you\'re big, and troops regrow faster the further below the cap you sit.',
+      'Gold no longer comes from a workforce at all — it trickles in on its own and stacks with cities, ports and trade, completely independent of population.',
+      'Combat now weighs both sides fully: terrain, relative strength, and how much of the map each side already controls all shift the price and the pace of taking a tile, not just a flat toll for the ground.',
+      'A dominant nation is measurably cheaper and faster to chip away at than a small, evenly matched one — sheer size stops being armor.',
+      'Betraying an ally trusted enough to know better costs real blood, not just a reputational hit — attacking a known traitor is both cheaper and faster.',
+      'Defense Posts cover far more ground and hit much harder, but no longer stack — one well-placed post secures a wide radius on its own.',
+      'The army bar in the topbar (formerly the population bar) now shows troops committed to an attack as its second segment instead of workers, matching what your standing army is actually doing.',
+    ],
+  },
   {
     version: 'v1.6.0-beta',
     notes: [

@@ -8,21 +8,23 @@ project, not a replacement for `README.md` (player-facing rules) or
 ## What this is
 
 OceanFront is a real-time territory-expansion browser game (OpenFront /
-Territorial.io-style): claim a coastline, expand tile by tile, split your
-population between troops and gold-earning workers, build structures, and
-optionally nuke, ally with, or betray the AI nations around you. Zero runtime
-dependencies -- vanilla ES modules served by a tiny static file server
-(`server.js`), simulated at a fixed tick rate independent of rendering.
+Territorial.io-style): claim a coastline, expand tile by tile, grow an army
+that IS your whole population, build structures, and optionally nuke, ally
+with, or betray the AI nations around you. Zero runtime dependencies --
+vanilla ES modules served by a tiny static file server (`server.js`),
+simulated at a fixed tick rate independent of rendering.
 
 ## Current state
 
-On `main`. Latest version tag in-game is whatever `CURRENT_VERSION` says in
+On `main` (or `Update-Testing`, staged for a later merge -- check which with
+`git log`). Latest version tag in-game is whatever `CURRENT_VERSION` says in
 `src/changelog.js` -- check there and with `git log -1` for the exact commit,
 rather than trusting a hash written here, since both move. As of this
-hand-off that's **v1.4.0-beta**; whether any recent version has been cut as a
-GitHub release is worth asking the user rather than assuming (see below --
-this session can't push tags itself, so there's no way to check from git
-alone).
+hand-off that's **v2.0.0-beta**, the round that ported OpenFrontIO's exact
+population/combat model wholesale (see the load-bearing lessons below);
+whether any recent version has been cut as a GitHub release is worth asking
+the user rather than assuming (see below -- this session can't push tags
+itself, so there's no way to check from git alone).
 
 ## Standing workflow rules
 
@@ -67,7 +69,8 @@ lose track of -- follow them until told otherwise:
 - `src/game.js` -- the simulation: tick loop, combat, encirclement, boats,
   missiles, buildings, trade. No DOM, no rendering; runs identically headless
   or in a browser.
-- `src/player.js` -- a nation's population, troops/workers split, economy.
+- `src/player.js` -- a nation's troops (population is troops-only -- see the
+  load-bearing lessons below), troop cap and growth, gold income.
 - `src/ai.js` -- bot decision-making, re-evaluated every few seconds per bot.
 - `src/render.js` / `src/ui.js` -- canvas drawing and all DOM/input wiring,
   including the mobile bottom-sheet layout and touch handling.
@@ -81,15 +84,62 @@ lose track of -- follow them until told otherwise:
 Things that were each rediscovered the hard way once already -- don't
 rediscover them a second time.
 
-- **The population rebalancer corrects toward a target, continuously.**
-  `MIGRATE_RATE` in `src/player.js` pulls the troops/workers split back
-  toward the current ratio *every tick*. Any mechanic meant to boost troops
-  (or workers) must shift the *target ratio*, never add troops directly --
-  troops added outside that flow just leak back out into workers over the
-  following seconds. This is why both troop momentum and `LAND_GROWTH` feed
-  the population growth *rate*, and never touch `troops` directly. If a new
-  "bonus" mechanic seems to have no effect in testing, this is the first
-  thing to check.
+- **Population is troops-only now -- there is no rebalancer to route around.**
+  Until v2.0.0-beta, a `MIGRATE_RATE` rebalancer in `src/player.js` pulled a
+  troops/workers split back toward a target ratio every tick, so any "bonus"
+  mechanic had to shift that *target* rather than add troops directly, or it
+  leaked away. That whole mechanism -- workers, the slider, `MIGRATE_RATE`,
+  troop momentum -- is gone. `Player#troops` is the entire population now;
+  mutate it directly, the old workaround no longer applies and would just be
+  dead code if reintroduced.
+- **Porting a formula from a game with a different map scale means rescaling
+  it, not copying its constants.** OpenFrontIO's own numbers (a 50,000-troop
+  base, mag values of 80-120, a 150,000-tile sigmoid midpoint) are calibrated
+  to maps where a single nation can own >100,000 tiles; OceanFront's largest
+  map has ~87,600 tiles total, shared. Copying the literal constants would
+  have inflated troop counts by ~1000x and made every other tuned constant in
+  `config.js` (density-based combat costs, terrain values) meaningless
+  overnight. The fix: port the exact mathematical *shape* (exponents, the
+  ratio between terms, the multiplicative structure), then re-derive new
+  constants anchored to OceanFront's own scale -- pick a representative
+  "typical nation" size, solve for constants that reproduce something close
+  to the *current*, already-tuned behavior at that one point, and let the
+  curve's shape (usually sublinear/diminishing-returns, unlike a straight
+  line) diverge naturally away from it. Cross-checking a freshly-derived
+  constant against an *existing*, already-tuned one for the same concept
+  (this round: the new city-troop-bonus constant landed within ~15% of the
+  old `BUILDINGS.city.popBonus` it replaced, derived completely
+  independently) is a strong sanity check that the anchoring approach itself
+  is sound, not just a lucky guess.
+- **A formula that reads as "makes X tougher" from its variable names might
+  do the opposite -- reread the actual math, not the comments.** OpenFrontIO's
+  defense-debuff sigmoid was initially assumed (including in a question put
+  to the user) to make large defenders harder to attack, since the variable
+  is named `defenseSig` and multiplies into `largeDefenderAttackDebuff`.
+  Actually deriving `sigmoid()`'s output at both ends showed the opposite: it
+  *decreases* the attacker's cost/pace as the defender's land share grows,
+  making a dominant nation *easier*, not harder, to chip away at -- a
+  reinforcement of this project's existing density-based anti-snowball
+  design, not a competing force. Trust the arithmetic over what a name or a
+  comment implies it does, especially before asking the user to weigh a
+  tradeoff based on that assumption.
+- **A viability heuristic built on `density` can silently invert when the
+  population formula's shape changes.** `troops / tiles` used to be roughly
+  size-independent (any nation near its cap settled around the same density
+  regardless of how big it was, since the old cap was linear in tiles).
+  Switching `maxTroops` to a sublinear function of tiles broke that: a big
+  nation's *equilibrium* density is now naturally lower than a small one's,
+  purely from size, not from being less militarized. Every AI heuristic that
+  compared raw `density` between two nations to answer "is this one strong
+  for its size" (the `#viableRivals` target gate, the `boxedIn` check, the
+  ally-betrayal "worth it" gates) needed to switch to `troops / maxTroops`
+  (a new `Player#fillRatio` getter) instead -- density stays exactly right
+  for what the real combat formula charges per tile (`Game#attackLogic`
+  still uses it directly, correctly), but stops being a good *size-neutral*
+  strength signal the moment the underlying population curve stops being
+  linear. Any future change to the population formula's shape is worth
+  re-checking every AI heuristic that compares two nations' `density` for
+  this same silent-inversion risk.
 - **Live-updating DOM nodes must be reused, never rebuilt.** Rebuilding the
   leaderboard (or similar) with `replaceChildren()` on every refresh was
   silently dropping 0-33% of taps, because a tap's `pointerdown` and
@@ -140,7 +190,23 @@ Full details, including what each test actually checks, are in
 - **No recent version is confirmed tagged as a GitHub release.** See the
   workflow rules above -- this session can't push tags, so ask the user
   rather than assuming one has been cut.
-- **Easy-difficulty matches got noticeably shorter** in the land/gold rework
-  (large map: 11.9 → 5.4 min average) as a side effect of troop growth now
-  scaling with land -- flagged to the user, not changed. Worth another look
-  if it comes up again.
+- **v2.0.0-beta's new constants are a first-pass calibration, not a fully
+  matured balance.** Every new number in `config.js`'s economy/combat
+  sections (`TROOPS_TILE_SCALE`/`TROOPS_BASE`, the growth-rate constants,
+  `TERRAIN_MAG`, `GOLD_BASE_RATE`, the Defense Post's new cost, the
+  big-nation sigmoid's midpoint/decay) was derived by anchoring to a
+  representative nation size and cross-checked against `pacing-sweep.mjs`
+  once (no stalls, no sub-3-minute blowouts, `medium/normal` and
+  `large/normal` landed almost exactly on the pre-rework baseline after one
+  `TERRAIN_MAG` correction) -- but a change this size touching nearly every
+  numeric system in the game warrants more real playtesting than one
+  session's sweep-and-eyeball pass can give it. If pacing or a specific
+  matchup feels off, `TERRAIN_MAG` (overall combat cost/speed) and
+  `TROOPS_TILE_SCALE`/`TROOPS_BASE` (overall population scale) are the two
+  broadest levers, per the same pacing-sweep methodology as always.
+- **`small/hard` in `pacing-sweep.mjs` reads at 2.6 minutes**, marginally
+  under the informal "no sub-3-minute blowout" guideline this project has
+  used in past rounds -- every other combo is comfortably above 3 minutes
+  and nothing stalls, so this was judged not worth a further tuning pass on
+  its own, but is worth a second look if small/hard specifically feels too
+  fast in play.

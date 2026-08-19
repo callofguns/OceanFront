@@ -4,7 +4,6 @@
 import {
   NUKE_COST,
   OCEAN,
-  NEUTRAL_DENSITY,
   BOAT_MIN_TROOPS,
   AI_VICTIM_SHARE,
   AI_VERY_WEAK_RATIO,
@@ -56,7 +55,6 @@ export class AiController {
     if (p.tiles.size === 0) return;
 
     const border = this.#scanBorders(game);
-    this.#setPosture(border);
     this.#doDiplomacy(game, border);
     this.#spendGold(game, border);
     this.#useMissiles(game);
@@ -85,13 +83,21 @@ export class AiController {
     // the whole map into a permanent stalemate, so somebody has to break
     // faith.
     const neighbours = [...border.contact.keys()];
-    const myDensity = p.density;
+    // Fill ratio (troops vs. own cap), not density: maxTroops is now a
+    // sublinear function of tiles (see Player#maxTroops), so a big and a
+    // small nation settle at different equilibrium densities purely from
+    // size, not from how militarized either one is. Fill ratio stays
+    // meaningful across sizes the same way density used to before that --
+    // the smoothing offset is 0.1, not density's old 1, since fillRatio is
+    // bounded to roughly [0, 1] rather than density's much wider range;
+    // reusing 1 here would flatten the gate to near-insensitivity.
+    const myFill = p.fillRatio;
     const boxedIn =
       border.neutral === 0 &&
       neighbours.length > 0 &&
       neighbours.every((id) => {
         if (p.allies.has(id)) return true;
-        const ratio = (myDensity + 1) / (game.players[id].density + 1);
+        const ratio = (myFill + 0.1) / (game.players[id].fillRatio + 0.1);
         return ratio < 0.75; // same floor #viableRivals uses in #makeWar
       });
 
@@ -103,7 +109,7 @@ export class AiController {
         if (!border.contact.has(allyId)) continue;
         // Normally we only turn on someone we can clearly beat; when boxed in,
         // the weakest neighbour will have to do.
-        const beatable = ally.tiles.size < p.tiles.size * 0.6 && p.density > ally.density * 1.3;
+        const beatable = ally.tiles.size < p.tiles.size * 0.6 && p.fillRatio > ally.fillRatio * 1.3;
         if (!boxedIn && !beatable) continue;
         if (!victim || ally.tiles.size < victim.tiles.size) victim = ally;
       }
@@ -142,9 +148,9 @@ export class AiController {
       const ally = game.players[allyId];
       if (!ally?.alive || !dip.canBreak(p.id, allyId)) continue;
 
-      const expected = ally.maxPop * ally.troopRatio;
+      const expected = ally.maxTroops;
       if (expected <= 0 || ally.troops >= expected * AI_BETRAYAL_WEAK_ALLY_RATIO) continue;
-      if (p.density <= ally.density * 1.2) continue; // still not worth the reputation hit
+      if (p.fillRatio <= ally.fillRatio * 1.2) continue; // still not worth the reputation hit
 
       dip.breakAlliance(p.id, ally.id);
       return true;
@@ -198,17 +204,6 @@ export class AiController {
     }
 
     return { contact, neutral, coastal, sample, borderSample, coastSample };
-  }
-
-  /** Shift the troops/workers slider based on how dangerous the map looks. */
-  #setPosture(border) {
-    const p = this.player;
-    const threatened = border.contact.size > 0;
-    const target = threatened ? 0.55 + 0.15 * this.aggression : 0.42;
-    // Same 25-75% bound the player's own slider is limited to (see the
-    // #troop-ratio input in index.html) -- bots play by the same rule
-    // rather than being able to out-militarize what the player is allowed.
-    p.troopRatio = Math.max(0.25, Math.min(0.75, target));
   }
 
   #spendGold(game, border) {
@@ -295,8 +290,7 @@ export class AiController {
 
     // Wait until the army is worth committing -- lower on harder tiers, so
     // they commit sooner with a thinner standing army.
-    const readiness = p.troops / Math.max(1, p.maxPop * p.troopRatio);
-    if (readiness < this.readiness) return;
+    if (p.fillRatio < this.readiness) return;
 
     // Occasionally raid by sea even with land targets available, purely for
     // unpredictability -- not only as the no-target fallback it is below.
@@ -308,7 +302,7 @@ export class AiController {
       return;
     }
 
-    const rivals = this.#viableRivals(game, border, p.density);
+    const rivals = this.#viableRivals(game, border, p.fillRatio);
     const target =
       this.#findVictim(game, rivals) ??
       this.#findVeryWeak(rivals) ??
@@ -345,7 +339,7 @@ export class AiController {
    * draws from, so they all respect the same "can we actually take this"
    * gate the original single-score search used.
    */
-  #viableRivals(game, border, myDensity) {
+  #viableRivals(game, border, myFill) {
     const p = this.player;
     const rivals = [];
     for (const [rivalId, contactTiles] of border.contact) {
@@ -353,11 +347,14 @@ export class AiController {
       if (!rival.alive) continue;
       if (p.allies.has(rivalId)) continue; // bound by treaty
 
-      const theirDensity = rival.density;
-      const ratio = (myDensity + 1) / (theirDensity + 1);
+      // Fill ratio (not density -- see the boxedIn comment in #doDiplomacy)
+      // gates and scores relative *strength*; theirDensity is kept
+      // separately for #findWeakest's cost estimate, which genuinely is
+      // density-driven since that's what Game#attackLogic itself charges.
+      const ratio = (myFill + 0.1) / (rival.fillRatio + 0.1);
       if (ratio < 0.75) continue; // too well defended to be worth it
 
-      rivals.push({ rival, contactTiles, theirDensity, ratio });
+      rivals.push({ rival, contactTiles, theirDensity: rival.density, ratio });
     }
     return rivals;
   }
@@ -385,7 +382,7 @@ export class AiController {
     let best = null;
     let bestRatio = AI_VERY_WEAK_RATIO;
     for (const { rival } of rivals) {
-      const expected = rival.maxPop * rival.troopRatio;
+      const expected = rival.maxTroops;
       if (expected <= 0) continue;
       const ratio = rival.troops / expected;
       if (ratio < bestRatio) {

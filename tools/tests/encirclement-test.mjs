@@ -9,9 +9,10 @@
 //  - Every player not under test is "parked" on an isolated one-tile island,
 //    so nobody is eliminated into an accidental last-nation-standing victory
 //    that would end the match before the enclosure scan ever runs.
-//  - Population keeps growing while the match ticks, and new workers earn
-//    gold, so treasuries drift by fractions of a coin. Gold is therefore
-//    compared with a small tolerance rather than for exact equality.
+//  - Population (troops) keeps growing while the match ticks, and gold
+//    trickles in on its own, so treasuries drift by fractions of a coin.
+//    Gold is therefore compared with a small tolerance rather than exact
+//    equality.
 import { Game, NEUTRAL } from '../../src/game.js';
 import { MAP_PRESETS, PLAINS, OCEAN, ENCLOSURE_SCAN_TICKS } from '../../src/config.js';
 
@@ -35,11 +36,16 @@ function blankGame() {
   for (const p of game.players) {
     p.tiles.clear();
     p.troops = 0;
-    p.workers = 0;
     p.gold = 0;
     p.alive = true;
     p.lastConquerorId = -1;
     p.ai = null; // no bot decisions -- these tests assert on exact state
+    // Gold now trickles in on its own regardless of population (see
+    // src/player.js's goldPerSecond) -- zero it out so treasuries stay
+    // exactly where the test puts them across the many ticks these
+    // fixtures run, the same way workers=0 used to make gold deterministic
+    // before the population/gold rework.
+    p.goldMultiplier = 0;
   }
   game.state = 'playing';
   game.attacks = [];
