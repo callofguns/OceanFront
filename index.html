@@ -37,9 +37,15 @@
       <span class="stat-label">Workers</span>
       <span class="stat-value" id="stat-workers">0</span>
     </div>
-    <div class="stat" title="Population against your current cap">
-      <span class="stat-label">Population</span>
-      <span class="stat-value" id="stat-pop">0</span>
+    <div class="stat pop" title="Population against your current cap">
+      <span class="stat-label">Population <b id="stat-pop-rate">+0/s</b></span>
+      <div class="popbar" id="pop-bar">
+        <div class="popbar-fill troops" id="pop-bar-troops"></div>
+        <div class="popbar-fill workers" id="pop-bar-workers"></div>
+        <div class="popbar-text">
+          <span id="stat-pop">0</span><span id="stat-pop-max">0</span>
+        </div>
+      </div>
     </div>
     <div class="stat gold" title="Treasury and income per second">
       <span class="stat-label">Gold</span>

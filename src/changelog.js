@@ -2,9 +2,15 @@
 // main menu. CURRENT_VERSION drives the visible tag -- bump it whenever a
 // new entry is added below. Newest first.
 
-export const CURRENT_VERSION = 'v1.5.0-beta';
+export const CURRENT_VERSION = 'v1.6.0-beta';
 
 export const CHANGELOG = [
+  {
+    version: 'v1.6.0-beta',
+    notes: [
+      'Population now shows as a fill bar in the topbar instead of a plain number pair — troops and workers as two stacked segments against your current cap, with a live growth-rate readout next to it.',
+    ],
+  },
   {
     version: 'v1.5.0-beta',
     notes: [

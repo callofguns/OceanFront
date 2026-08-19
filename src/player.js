@@ -57,6 +57,11 @@ export class Player {
      *  1 for the human player -- difficulty only ever affects bots. */
     this.economyMultiplier = 1;
 
+    /** Population gained (or lost, while decaying over the cap) per game
+     *  second, measured directly off updateEconomy()'s own before/after pop
+     *  rather than re-derived -- shown next to the HUD population bar. */
+    this.popRate = 0;
+
     /** Who most recently took a tile from us. Whoever holds this when the
      *  last tile falls inherits a share of the treasury (CONQUEST_GOLD_SHARE);
      *  it stays NEUTRAL if the land was lost to a nuke rather than a nation,
@@ -124,6 +129,7 @@ export class Player {
 
   /** One simulation tick of population growth, migration and income. */
   updateEconomy() {
+    const popBefore = this.pop;
     const cap = this.maxPop;
     const pop = this.pop;
     // Computed once and reused for both steps below, so growth and
@@ -162,6 +168,12 @@ export class Player {
 
     if (this.troops < 0) this.troops = 0;
     if (this.workers < 0) this.workers = 0;
+
+    // Re-balancing above moves population between troops/workers but never
+    // changes the total, so this delta is purely the growth/decay branches
+    // -- measuring it here instead of re-deriving the formula stays correct
+    // automatically if that formula ever changes again.
+    this.popRate = (this.pop - popBefore) * TICKS_PER_SECOND;
 
     this.gold += this.goldPerSecond / TICKS_PER_SECOND;
   }
