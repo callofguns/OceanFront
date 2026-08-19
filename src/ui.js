@@ -49,6 +49,17 @@ export class UI {
     /** Reused DOM per nation / per offer -- see #refreshLeaderboard for why. */
     this.lbRows = new Map();
     this.offerRows = new Map();
+    /** Population bar elements -- static, queried once and reused every
+     *  refresh (~8x/sec) rather than re-looked-up, same reasoning as the
+     *  leaderboard rows: a node swapped out mid-tap can silently drop it. */
+    this.popBarEls = {
+      bar: $('pop-bar'),
+      troops: $('pop-bar-troops'),
+      workers: $('pop-bar-workers'),
+      pop: $('stat-pop'),
+      max: $('stat-pop-max'),
+      rate: $('stat-pop-rate'),
+    };
     this.lastEventSignature = null;
     /** True while any finger/mouse button is down anywhere on the page. */
     this.pointerIsDown = false;
@@ -717,7 +728,7 @@ export class UI {
     $('stat-troops').textContent = formatShort(human.troops);
     this.#refreshAttackingStat(game, human);
     $('stat-workers').textContent = formatShort(human.workers);
-    $('stat-pop').textContent = `${formatShort(human.pop)} / ${formatShort(human.maxPop)}`;
+    this.#refreshPopBar(human);
     $('stat-gold').textContent = `${formatShort(human.gold)}  (+${human.goldPerSecond.toFixed(1)}/s)`;
     $('stat-land').textContent = `${(game.landShare(human) * 100).toFixed(1)}%`;
 
@@ -739,6 +750,39 @@ export class UI {
     const el = $('stat-attacking');
     el.hidden = committed < 1;
     if (!el.hidden) el.textContent = formatShort(committed);
+  }
+
+  /**
+   * Population-cap fill bar: two stacked segments (troops, then workers)
+   * sized to pop/maxPop, clamped and composed the same way OpenFrontIO's
+   * troop bar is -- a fixed-size base, each segment's raw percentage clamped
+   * to [0, 100], and the second clamped again to what's left after the
+   * first. `transform`-only updates (no layout) since this runs ~8x/sec.
+   */
+  #refreshPopBar(human) {
+    const els = this.popBarEls;
+    const base = Math.max(human.maxPop, 1);
+    const troopPct = Math.max(0, Math.min(100, (human.troops / base) * 100));
+    const workerPct = Math.max(0, Math.min(100 - troopPct, (human.workers / base) * 100));
+
+    els.troops.style.transform = `scaleX(${troopPct / 100})`;
+    els.workers.style.transform = `translateX(${troopPct}%) scaleX(${workerPct / 100})`;
+    els.bar.classList.toggle('is-over', human.pop > human.maxPop);
+
+    // Current at the bar's left edge, cap at its right edge, no separator --
+    // mirrors OpenFrontIO's mobile troop bar layout exactly (its desktop
+    // variant centers "current / max" instead, but at this bar's ~150px
+    // width edge-anchored reads more clearly than a centered fraction).
+    els.pop.textContent = formatShort(human.pop);
+    els.max.textContent = formatShort(human.maxPop);
+
+    // formatShort() only handles non-negative magnitudes (nothing before
+    // this called it with a negative number), so the sign is applied here
+    // rather than passing a negative straight through.
+    const rate = human.popRate;
+    const rateText = `${rate < 0 ? '-' : '+'}${formatShort(Math.abs(rate))}/s`;
+    if (els.rate.textContent !== rateText) els.rate.textContent = rateText;
+    els.rate.classList.toggle('is-falling', rate < 0);
   }
 
   #refreshBuildCosts(human) {
