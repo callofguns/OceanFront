@@ -37,6 +37,11 @@ import {
   ENCLOSED_MAX_TILES,
   ANNEX_GOLD_SHARE,
   CONQUEST_GOLD_SHARE,
+  TERRAIN_SPEED_COST,
+  COMBAT_RATIO_FLOOR,
+  COMBAT_RATIO_CEIL,
+  TRAITOR_COMBAT_DISCOUNT,
+  TRAITOR_DISTRUST_LIMIT,
 } from './config.js';
 import { generateMap, findSpawnPoints } from './map.js';
 import { makeRng, shuffle } from './rng.js';
@@ -273,10 +278,31 @@ export class Game {
     return mult;
   }
 
-  tileCost(tile, targetId) {
+  /**
+   * Troop cost to take `tile` from `targetId` (NEUTRAL for unclaimed land).
+   * `attackTroops` is the attacking force's current remaining pool (an
+   * Attack's or a Boat's `.troops`) -- against a real defender, the cost
+   * scales with how lopsided the fight is: a crushing numbers advantage
+   * makes each tile cheaper, an even or losing fight makes it costlier.
+   * Neutral land has no army to be relatively stronger or weaker than, so
+   * `attackTroops` has no effect there -- pass any value (0 is fine) when
+   * `targetId` is NEUTRAL.
+   */
+  tileCost(tile, targetId, attackTroops = 0) {
     const t = this.map.terrain[tile];
-    const density = targetId >= 0 ? this.players[targetId].density : NEUTRAL_DENSITY;
-    const base = density * DEFENDER_STRENGTH + TERRAIN_COST[t];
+    const defender = targetId >= 0 ? this.players[targetId] : null;
+    const density = defender ? defender.density : NEUTRAL_DENSITY;
+
+    let ratio = 1;
+    if (defender && attackTroops > 0) {
+      ratio = Math.min(COMBAT_RATIO_CEIL, Math.max(COMBAT_RATIO_FLOOR, defender.troops / attackTroops));
+    }
+    // Betraying an ally costs more than trust -- it costs blood too.
+    const traitor = defender && defender.traitorScore > TRAITOR_DISTRUST_LIMIT
+      ? TRAITOR_COMBAT_DISCOUNT
+      : 1;
+
+    const base = (density * DEFENDER_STRENGTH + TERRAIN_COST[t]) * ratio * traitor;
     return base * TERRAIN_DEFENSE[t] * this.defenseAt(tile, targetId);
   }
 
@@ -395,7 +421,7 @@ export class Game {
         continue;
       }
 
-      const cost = this.tileCost(tile, attack.targetId);
+      const cost = this.tileCost(tile, attack.targetId, attack.troops);
       if (attack.troops < cost) {
         // Might just be an expensive mountain -- try elsewhere a few times.
         attack.fails++;
@@ -410,7 +436,9 @@ export class Game {
       }
       this.setOwner(tile, attacker.id);
       this.#removeFrontier(attack, r);
-      taken++;
+      // Rough ground eats more of the tick's tile budget, not just more
+      // troops -- terrain slows conquest down, it doesn't only tax it.
+      taken += TERRAIN_SPEED_COST[this.map.terrain[tile]];
 
       // The new tile opens up more of the target's border.
       const n = this.map.neighbors(tile, this._nb);
@@ -463,7 +491,7 @@ export class Game {
       for (let k = 0; k < n; k++) {
         if (this.owner[nb[k]] === attack.attackerId) enclosed++;
       }
-      const affordable = attack.troops >= this.tileCost(tile, attack.targetId);
+      const affordable = attack.troops >= this.tileCost(tile, attack.targetId, attack.troops);
       const score = (affordable ? 1000 : 0) + enclosed;
       if (score > bestScore) {
         bestScore = score;
@@ -817,7 +845,7 @@ export class Game {
     boat.done = true;
     const tile = boat.targetTile;
     const defenderId = this.owner[tile];
-    const cost = this.tileCost(tile, defenderId);
+    const cost = this.tileCost(tile, defenderId, boat.troops);
 
     if (boat.troops <= cost) {
       // The landing is thrown back into the sea.
