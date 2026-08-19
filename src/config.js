@@ -17,6 +17,14 @@ export const TERRAIN_NAMES = ['Ocean', 'Plains', 'Highland', 'Mountain'];
 export const TERRAIN_COST = [Infinity, 0.7, 1.5, 2.6];
 // Multiplier applied to the whole tile cost -- rough ground defends itself.
 export const TERRAIN_DEFENSE = [1, 1.0, 1.1, 1.3];
+/**
+ * How much of an attack's per-tick tile budget (see ATTACK_BASE_TILES,
+ * below) one tile of this terrain eats -- independent from TERRAIN_COST.
+ * Rough ground is both pricier in troops *and* slower to cross, so a
+ * mountain push visibly grinds even when troops are no object, instead of
+ * only ever showing up as a bigger bill at the same pace as open plains.
+ */
+export const TERRAIN_SPEED_COST = [Infinity, 1, 1.3, 1.7];
 
 // ----------------------------------------------------------------- combat ---
 
@@ -26,6 +34,26 @@ export const NEUTRAL_DENSITY = 1.1;
 export const DEFENDER_STRENGTH = 1.15;
 /** Fraction of a defender's per-tile density that dies when a tile falls. */
 export const DEFENDER_LOSS = 0.85;
+/**
+ * A tile's cost is scaled by the *relative* strength of the attacking force
+ * against the defender's whole remaining army (defender.troops / attack's
+ * committed troops), clamped to this range -- a crushing numerical
+ * advantage makes each tile cheaper (down to the floor); a close or losing
+ * fight makes it costlier (up to the ceiling), the same way a real siege
+ * goes faster the more it outnumbers its target and bogs down the more
+ * evenly matched it is. The ratio is recomputed every tile taken, so it
+ * shifts naturally as both sides' troops deplete over a multi-tile assault.
+ * Only applies against a real defender -- unclaimed land has no army to be
+ * relatively stronger or weaker than, so its cost is untouched by this.
+ */
+export const COMBAT_RATIO_FLOOR = 0.85;
+export const COMBAT_RATIO_CEIL = 1.4;
+/**
+ * Attacking a nation whose traitorScore is over TRAITOR_DISTRUST_LIMIT (see
+ * the diplomacy section, below) costs this fraction of the usual price --
+ * betraying an ally has a real combat cost, not just a reputational one.
+ */
+export const TRAITOR_COMBAT_DISCOUNT = 0.85;
 /** Attacks conquer at least this many tiles per tick... */
 export const ATTACK_BASE_TILES = 5;
 /** ...plus this many per committed troop, capped below. */

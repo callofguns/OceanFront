@@ -2,13 +2,21 @@
 // main menu. CURRENT_VERSION drives the visible tag -- bump it whenever a
 // new entry is added below. Newest first.
 
-export const CURRENT_VERSION = 'v1.4.0-beta';
+export const CURRENT_VERSION = 'v1.5.0-beta';
 
 export const CHANGELOG = [
   {
+    version: 'v1.5.0-beta',
+    notes: [
+      'Combat now weighs the strength of both sides: a crushing numerical advantage makes each tile cheaper to take, while an even or losing fight costs more — a real siege, not a flat toll.',
+      'Rough terrain now slows conquest down, not just costs more troops — mountains are taken more slowly than open plains even when troops are no object.',
+      'Attacking a known traitor now costs less — betrayal has a real cost in blood, not just trust.',
+    ],
+  },
+  {
     version: 'v1.4.0-beta',
     notes: [
-      'Smarter bots, informed by how OpenFrontIO builds theirs: they now prefer piling onto a rival someone else is already invading, and snowballing one whose army has just collapsed, instead of only ever grinding at whoever scores best on paper.',
+      'Smarter bots: they now prefer piling onto a rival someone else is already invading, and snowballing one whose army has just collapsed, instead of only ever grinding at whoever scores best on paper.',
       'Bot difficulty now also changes how fast bots react and how full an army they want before attacking — Hard bots think and strike noticeably faster, not just harder.',
       'Hard bots refuse token attacks too small to matter, but still always retaliate when attacked themselves.',
       'Bots now occasionally raid by sea for unpredictability, not only as a last resort, and can opportunistically betray an ally whose army has collapsed.',
