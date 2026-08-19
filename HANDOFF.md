@@ -19,7 +19,10 @@ dependencies -- vanilla ES modules served by a tiny static file server
 On `main`. Latest version tag in-game is whatever `CURRENT_VERSION` says in
 `src/changelog.js` -- check there and with `git log -1` for the exact commit,
 rather than trusting a hash written here, since both move. As of this
-hand-off that's **v1.3.0-beta**, not yet cut as a GitHub release (see below).
+hand-off that's **v1.4.0-beta**; whether any recent version has been cut as a
+GitHub release is worth asking the user rather than assuming (see below --
+this session can't push tags itself, so there's no way to check from git
+alone).
 
 ## Standing workflow rules
 
@@ -88,6 +91,20 @@ rediscover them a second time.
   the way a real input does. Use `page.mouse.click()` for mouse-equivalent
   taps, or CDP's `Input.dispatchTouchEvent` (see `tools/tests/mobiletest.mjs`)
   for anything that needs to be genuinely multi-touch, like pinch-zoom.
+- **A tighter AI viability gate can freeze the whole map, not just one
+  matchup.** Adding a stricter "is this attack worth it" check to `#makeWar`
+  in `src/ai.js` shifted enough early-game decisions that a rare late-game
+  shape became reachable: two mutually allied "giants," each also allied
+  with a small nation too densely defended for anyone to ever clear the
+  `ratio >= 0.75` viability gate -- so nobody had a legal attack left, ever.
+  The fix wasn't tuning the new check's threshold (that just moved which
+  seeds broke); it was noticing the existing "boxed in, break an alliance"
+  valve only checked whether every neighbour was an *ally*, not whether every
+  neighbour was an ally *or unreachable anyway* -- those are the same dead
+  end and both need to trip it. Any new attack-eligibility filter is worth
+  pacing-sweeping across every map size and difficulty specifically looking
+  for `stalled` results, not just checking that pacing looks reasonable on
+  average.
 
 ## How to verify a change
 
@@ -102,8 +119,9 @@ Full details, including what each test actually checks, are in
 
 ## Known open items
 
-- **`v1.3.0-beta` needs a manual GitHub release/tag.** See the workflow
-  rules above -- this session can't push tags.
+- **No recent version is confirmed tagged as a GitHub release.** See the
+  workflow rules above -- this session can't push tags, so ask the user
+  rather than assuming one has been cut.
 - **Easy-difficulty matches got noticeably shorter** in the land/gold rework
   (large map: 11.9 → 5.4 min average) as a side effect of troop growth now
   scaling with land -- flagged to the user, not changed. Worth another look

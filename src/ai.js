@@ -1,15 +1,30 @@
 // Bot nations. Each bot re-evaluates every few seconds: grow the economy,
 // then decide whether to expand into open land or invade a neighbour.
 
-import { NUKE_COST, OCEAN, NEUTRAL_DENSITY, BOAT_MIN_TROOPS } from './config.js';
+import {
+  NUKE_COST,
+  OCEAN,
+  NEUTRAL_DENSITY,
+  BOAT_MIN_TROOPS,
+  AI_VICTIM_SHARE,
+  AI_VERY_WEAK_RATIO,
+  AI_NAVAL_HARASSMENT_CHANCE,
+  AI_WEAK_ATTACK_RATIO,
+  AI_BETRAYAL_WEAK_ALLY_RATIO,
+  AI_BETRAYAL_WEAK_ALLY_CHANCE,
+} from './config.js';
 
-const THINK_MIN = 18; // ticks
-const THINK_MAX = 34;
+// Fallback range for the default tier below -- identical to 'normal' in
+// config.js's DIFFICULTIES, so anything constructing an AiController without
+// a tier (older test helpers, tools/simulate.js's human-AI) behaves exactly
+// as it did before difficulty-scaled cadence existed.
+const DEFAULT_THINK_RANGE = [18, 34];
+const DEFAULT_READINESS = 0.45;
 
 export class AiController {
   /** `tier` is a DIFFICULTIES entry from config.js (defaults to a neutral
-   *  1x multiplier so a bot can still be constructed without one, e.g. in
-   *  older test helpers). */
+   *  1x multiplier plus Normal's cadence/readiness, so a bot can still be
+   *  constructed without one, e.g. in older test helpers). */
   constructor(player, rng, tier = { aggression: 1 }) {
     this.player = player;
     this.rng = rng;
@@ -19,13 +34,23 @@ export class AiController {
     this.aggression = (0.5 + rng() * 0.9) * tier.aggression;
     this.greed = (0.6 + rng() * 0.8) * tier.aggression;
     this.expansionism = (0.7 + rng() * 0.8) * tier.aggression;
-    this.cooldown = Math.floor(rng() * THINK_MAX);
+    // How often this bot reconsiders its posture and looks for a fight, and
+    // how full its standing army wants to be before it commits to one --
+    // the biggest single difficulty lever, since it changes reaction speed
+    // rather than just strength once a bot does act.
+    this.thinkRange = tier.thinkRange ?? DEFAULT_THINK_RANGE;
+    this.readiness = tier.readiness ?? DEFAULT_READINESS;
+    // Refuses a token attack that's too small to matter (see #makeWar) --
+    // only on tiers that opt in.
+    this.strictAttacks = tier.strictAttacks ?? false;
+    this.cooldown = Math.floor(rng() * this.thinkRange[1]);
     this.lastBorderScan = null;
   }
 
   update(game) {
     if (--this.cooldown > 0) return;
-    this.cooldown = THINK_MIN + Math.floor(this.rng() * (THINK_MAX - THINK_MIN));
+    const [min, max] = this.thinkRange;
+    this.cooldown = min + Math.floor(this.rng() * (max - min));
 
     const p = this.player;
     if (p.tiles.size === 0) return;
@@ -48,12 +73,27 @@ export class AiController {
       else dip.decline(offer);
     }
 
-    // A nation with no open land and none but allies on its borders has
-    // nowhere left to grow. Without this valve a web of pacts freezes the
-    // whole map into a permanent stalemate, so somebody has to break faith.
+    // An ally whose army just collapsed is too good an opportunity to pass
+    // up, independent of the boxed-in valve below (which only fires when
+    // there's truly nowhere else to grow).
+    if (this.#maybeBetrayWeakAlly(game, border)) return;
+
+    // A nation with no open land and no border it could ever profitably
+    // attack has nowhere left to grow. Without this valve a web of pacts
+    // (or a ring of allies plus rivals too heavily fortified to ever clear
+    // the viability gate below -- functionally the same dead end) freezes
+    // the whole map into a permanent stalemate, so somebody has to break
+    // faith.
     const neighbours = [...border.contact.keys()];
+    const myDensity = p.density;
     const boxedIn =
-      border.neutral === 0 && neighbours.length > 0 && neighbours.every((id) => p.allies.has(id));
+      border.neutral === 0 &&
+      neighbours.length > 0 &&
+      neighbours.every((id) => {
+        if (p.allies.has(id)) return true;
+        const ratio = (myDensity + 1) / (game.players[id].density + 1);
+        return ratio < 0.75; // same floor #viableRivals uses in #makeWar
+      });
 
     if (p.allies.size > 0 && (boxedIn ? this.rng() < 0.5 : this.rng() < 0.05 * this.aggression)) {
       let victim = null;
@@ -85,6 +125,31 @@ export class AiController {
     // No point courting someone we could simply take.
     if (game.players[target].tiles.size < p.tiles.size * 0.5) return;
     dip.propose(p.id, target);
+  }
+
+  /** Opportunistically betray a bordering ally whose standing army has
+   *  collapsed to a fraction of what it's building toward -- the same
+   *  weakness signal #findVeryWeak uses against rivals, applied to a
+   *  treaty partner instead. Returns whether a betrayal happened. */
+  #maybeBetrayWeakAlly(game, border) {
+    const p = this.player;
+    const dip = game.diplomacy;
+    if (p.allies.size === 0) return false;
+    if (this.rng() >= AI_BETRAYAL_WEAK_ALLY_CHANCE * this.aggression) return false;
+
+    for (const allyId of p.allies) {
+      if (!border.contact.has(allyId)) continue; // out of reach either way
+      const ally = game.players[allyId];
+      if (!ally?.alive || !dip.canBreak(p.id, allyId)) continue;
+
+      const expected = ally.maxPop * ally.troopRatio;
+      if (expected <= 0 || ally.troops >= expected * AI_BETRAYAL_WEAK_ALLY_RATIO) continue;
+      if (p.density <= ally.density * 1.2) continue; // still not worth the reputation hit
+
+      dip.breakAlliance(p.id, ally.id);
+      return true;
+    }
+    return false;
   }
 
   /**
@@ -215,26 +280,74 @@ export class AiController {
     if (best !== null) game.launchNuke(p, best);
   }
 
+  /**
+   * Decide who (if anyone) to attack this think-cycle. Tries a sequence of
+   * purpose-built target finders in priority order and takes the first hit,
+   * rather than scoring every option and picking the best: a rival already
+   * being invaded, or one whose army just collapsed, is worth reacting to
+   * immediately even if some other target would technically score higher.
+   * Falls back to the original weighted search (#findWeakest) only once
+   * none of those opportunities exist.
+   */
   #makeWar(game, border) {
     const p = this.player;
     if (game.attacksBy(p.id).length > 0) return;
 
-    // Wait until the army is worth committing.
+    // Wait until the army is worth committing -- lower on harder tiers, so
+    // they commit sooner with a thinner standing army.
     const readiness = p.troops / Math.max(1, p.maxPop * p.troopRatio);
-    if (readiness < 0.45) return;
+    if (readiness < this.readiness) return;
 
-    const myDensity = p.density;
-    let bestTarget = null;
-    let bestScore = 0;
-
-    if (border.neutral > 0) {
-      // Open land is cheap; value it against how much of it we can reach.
-      const affordable = p.troops / (NEUTRAL_DENSITY * 2 + 1);
-      bestScore = Math.min(border.neutral, affordable) * 0.9 * this.expansionism;
-      bestTarget = -1;
+    // Occasionally raid by sea even with land targets available, purely for
+    // unpredictability -- not only as the no-target fallback it is below.
+    if (
+      border.coastal > 0 &&
+      this.rng() < AI_NAVAL_HARASSMENT_CHANCE &&
+      this.#tryNavalInvasion(game, border)
+    ) {
+      return;
     }
 
-    const leader = game.standings()[0];
+    const rivals = this.#viableRivals(game, border, p.density);
+    const target =
+      this.#findVictim(game, rivals) ??
+      this.#findVeryWeak(rivals) ??
+      this.#findLeader(game, rivals) ??
+      this.#findNeutral(border) ??
+      this.#findWeakest(game, p, rivals);
+
+    if (target === null) {
+      this.#tryNavalInvasion(game, border);
+      return;
+    }
+
+    const commit = target === -1 ? 0.55 : 0.4 + 0.35 * this.aggression;
+    const troopsToSend = p.troops * commit;
+
+    // Refuse a token attack too small to matter -- unless we're already
+    // under attack ourselves, in which case any retaliation is worth it.
+    if (
+      this.strictAttacks &&
+      target !== -1 &&
+      game.attacksOn(p.id).length === 0 &&
+      troopsToSend < game.players[target].troops * AI_WEAK_ATTACK_RATIO
+    ) {
+      this.#tryNavalInvasion(game, border);
+      return;
+    }
+
+    game.launchAttack(p, target, troopsToSend);
+  }
+
+  /**
+   * Bordering, living, non-allied rivals we're not hopelessly outmatched
+   * against -- the shared candidate pool every rival-targeting finder below
+   * draws from, so they all respect the same "can we actually take this"
+   * gate the original single-score search used.
+   */
+  #viableRivals(game, border, myDensity) {
+    const p = this.player;
+    const rivals = [];
     for (const [rivalId, contactTiles] of border.contact) {
       const rival = game.players[rivalId];
       if (!rival.alive) continue;
@@ -244,6 +357,65 @@ export class AiController {
       const ratio = (myDensity + 1) / (theirDensity + 1);
       if (ratio < 0.75) continue; // too well defended to be worth it
 
+      rivals.push({ rival, contactTiles, theirDensity, ratio });
+    }
+    return rivals;
+  }
+
+  /** A rival already facing a serious invasion from someone else -- pile on
+   *  rather than let them recover in peace. */
+  #findVictim(game, rivals) {
+    let best = null;
+    let bestShare = AI_VICTIM_SHARE;
+    for (const { rival } of rivals) {
+      const incoming = game.attacksOn(rival.id).reduce((sum, a) => sum + a.troops, 0);
+      if (incoming === 0) continue;
+      const share = incoming / Math.max(1, rival.troops);
+      if (share > bestShare) {
+        bestShare = share;
+        best = rival.id;
+      }
+    }
+    return best;
+  }
+
+  /** A rival whose standing army has collapsed to a fraction of what
+   *  they're building toward -- an easy kill while they're down. */
+  #findVeryWeak(rivals) {
+    let best = null;
+    let bestRatio = AI_VERY_WEAK_RATIO;
+    for (const { rival } of rivals) {
+      const expected = rival.maxPop * rival.troopRatio;
+      if (expected <= 0) continue;
+      const ratio = rival.troops / expected;
+      if (ratio < bestRatio) {
+        bestRatio = ratio;
+        best = rival.id;
+      }
+    }
+    return best;
+  }
+
+  /** Gang up on the runaway map leader, if they're within reach. */
+  #findLeader(game, rivals) {
+    const leader = game.standings()[0];
+    if (!leader || leader.id === this.player.id) return null;
+    return rivals.some((r) => r.rival.id === leader.id) ? leader.id : null;
+  }
+
+  /** Open land is cheap and, unlike a rival, never fights back. */
+  #findNeutral(border) {
+    return border.neutral > 0 ? -1 : null;
+  }
+
+  /** Fallback: whichever bordering rival scores best by contested tiles,
+   *  affordability and density advantage -- the original approach, now
+   *  demoted to last resort since the finders above get first refusal. */
+  #findWeakest(game, p, rivals) {
+    const leader = game.standings()[0];
+    let bestTarget = null;
+    let bestScore = 0;
+    for (const { rival, contactTiles, theirDensity, ratio } of rivals) {
       let score = Math.min(contactTiles, p.troops / (theirDensity * 2 + 1)) * ratio * this.aggression;
       // Gang up on the runaway leader; go easy on the nearly-dead.
       if (leader && rival.id === leader.id && rival.id !== p.id) score *= 1.5;
@@ -252,24 +424,22 @@ export class AiController {
 
       if (score > bestScore) {
         bestScore = score;
-        bestTarget = rivalId;
+        bestTarget = rival.id;
       }
     }
-
-    if (bestTarget === null) {
-      this.#tryNavalInvasion(game, border);
-      return;
-    }
-
-    const commit = bestTarget === -1 ? 0.55 : 0.4 + 0.35 * this.aggression;
-    game.launchAttack(p, bestTarget, p.troops * commit);
+    return bestTarget;
   }
 
-  /** Landlocked bots with nothing to fight look for an island to raid. */
+  /**
+   * Looks for an island to raid by sea -- both as a fallback when nothing on
+   * land is worth attacking, and occasionally just to harass. Returns
+   * whether a boat actually launched, so a harassment roll knows whether it
+   * spent this think-cycle or should fall through to a land decision.
+   */
   #tryNavalInvasion(game, border) {
     const p = this.player;
-    if (border.coastal === 0 || p.troops < BOAT_MIN_TROOPS * 6) return;
-    if (this.rng() > 0.4) return;
+    if (border.coastal === 0 || p.troops < BOAT_MIN_TROOPS * 6) return false;
+    if (this.rng() > 0.4) return false;
 
     for (let attempt = 0; attempt < 8; attempt++) {
       const tile = Math.floor(this.rng() * game.map.size);
@@ -279,7 +449,8 @@ export class AiController {
         continue;
       }
       const res = game.launchBoat(p, tile, p.troops * 0.45);
-      if (res.ok) return;
+      if (res.ok) return true;
     }
+    return false;
   }
 }

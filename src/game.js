@@ -497,6 +497,12 @@ export class Game {
     return this.attacks.filter((a) => !a.done && a.attackerId === playerId);
   }
 
+  /** Attacks currently landing on `playerId`, from any attacker -- lets a
+   *  third party notice a nation is already being invaded and pile on. */
+  attacksOn(playerId) {
+    return this.attacks.filter((a) => !a.done && a.targetId === playerId);
+  }
+
   /** Stand down any fighting between two nations, e.g. when they sign a pact. */
   cancelAttacksBetween(a, b) {
     for (const atk of this.attacks) {

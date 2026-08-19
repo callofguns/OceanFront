@@ -45,6 +45,36 @@ export const ATTACK_MIN_TROOPS = 8;
  */
 export const FRONTIER_SAMPLE_SIZE = 6;
 
+// ------------------------------------------------------------------- ai ----
+// Bot target-selection thresholds. AiController tries these in priority
+// order (see #makeWar in ai.js) before falling back to its original
+// weighted-score search -- so a bot notices an opening (a rival already
+// being invaded, or one whose army just collapsed) instead of only ever
+// grinding at whoever scores best on paper.
+
+/** Share of a rival's troops that must already be under attack (from
+ *  anyone) before a bot piles on rather than picking a fresh fight. */
+export const AI_VICTIM_SHARE = 0.5;
+/** A rival is "very weak" once its troops fall below this fraction of what
+ *  it's building toward (its population cap times its own troop ratio). */
+export const AI_VERY_WEAK_RATIO = 0.2;
+/** Chance, per think-cycle, that a coastal bot raids by sea purely for
+ *  unpredictability -- not only as a last resort with no land target. */
+export const AI_NAVAL_HARASSMENT_CHANCE = 0.08;
+/**
+ * On difficulty tiers with `strictAttacks` set, a bot won't launch an
+ * attack committing fewer troops than this fraction of the target's troops
+ * -- a token peck just donates troops to the rebalancer for nothing. Waived
+ * while the bot is itself under attack, so it always retaliates.
+ */
+export const AI_WEAK_ATTACK_RATIO = 0.2;
+/** Fraction of an ally's expected army below which a bot may opportunistically
+ *  betray them, independent of being boxed in (see AI_VERY_WEAK_RATIO). */
+export const AI_BETRAYAL_WEAK_ALLY_RATIO = 0.2;
+/** Base per-think-cycle chance of that opportunistic betrayal, scaled by
+ *  the bot's aggression. */
+export const AI_BETRAYAL_WEAK_ALLY_CHANCE = 0.15;
+
 // ---------------------------------------------------------------- economy ---
 
 export const BASE_POP = 300;
@@ -251,18 +281,44 @@ export const MAP_PRESETS = {
 };
 
 /**
- * Bot difficulty, chosen on the main menu. Scales bots on two axes: economy
+ * Bot difficulty, chosen on the main menu. Scales bots on four axes: economy
  * (gold income and population growth -- always a felt difference, since it
- * doesn't depend on how a bot's own decision logic happens to play out) and
+ * doesn't depend on how a bot's own decision logic happens to play out),
  * aggression (the personality traits in AiController, so harder bots also
- * attack sooner and more often, not just with a bigger stack behind them).
- * The human player is never affected by this -- it only ever scales bots.
- * 'normal' is 1/1, so games default to exactly today's balance.
+ * attack sooner and more often, not just with a bigger stack behind them),
+ * thinkRange (ticks between re-evaluations -- how often a bot reconsiders
+ * its posture and looks for a fight; this is the single biggest lever, since
+ * it changes how fast a bot reacts to a weakening rival or an opening on the
+ * frontier, not just how strong it is once it decides to act), and readiness
+ * (the standing-army fullness a bot wants before committing to a fight --
+ * lower means attacking sooner with a thinner army).
+ * The human player is never affected by any of this -- it only ever scales
+ * bots. 'normal' keeps the previous flat values (18-34 ticks, 0.45
+ * readiness) as the unscaled baseline; 'economy'/'aggression' being 1/1 is
+ * what keeps Normal's *strength* unchanged from before this tier existed --
+ * it does not freeze the underlying decision logic itself, which improves
+ * for every tier together.
  */
 export const DIFFICULTIES = {
-  easy: { key: 'easy', label: 'Easy', economy: 0.6, aggression: 0.6 },
-  normal: { key: 'normal', label: 'Normal', economy: 1, aggression: 1 },
-  hard: { key: 'hard', label: 'Hard', economy: 1.6, aggression: 1.45 },
+  easy: {
+    key: 'easy', label: 'Easy',
+    economy: 0.6, aggression: 0.6,
+    thinkRange: [32, 55], readiness: 0.55,
+  },
+  normal: {
+    key: 'normal', label: 'Normal',
+    economy: 1, aggression: 1,
+    thinkRange: [18, 34], readiness: 0.45,
+  },
+  hard: {
+    key: 'hard', label: 'Hard',
+    economy: 1.6, aggression: 1.45,
+    thinkRange: [10, 20], readiness: 0.35,
+    // Refuses to launch a token attack under 20% of the target's troops
+    // (unless already under attack itself) rather than waste a cycle
+    // donating troops to the rebalancer for no real gain.
+    strictAttacks: true,
+  },
 };
 export const DEFAULT_DIFFICULTY = 'normal';
 
