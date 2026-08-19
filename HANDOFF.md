@@ -29,9 +29,15 @@ alone).
 These came from explicit instructions earlier in the project and are easy to
 lose track of -- follow them until told otherwise:
 
-- **Push straight to `main`.** The project used a `test`-branch-then-merge
-  workflow earlier on; the user later said to push directly to `main` "until
-  the game is out of beta." Do that unless told the rules changed.
+- **A new branch for every update, merged to `main` only on explicit
+  go-ahead.** This workflow has moved around: distinct per-feature branches
+  early on (`claude/mobile-pwa-...`, `claude/tap-reliability-fixes-...`),
+  then a single reused `test` branch, then a stretch of pushing straight to
+  `main`. The user has now restored the original pattern: branch off `main`
+  for each new piece of work, verify it there, push it, then **wait** --
+  don't merge or delete the branch until the user explicitly says to (e.g.
+  "push to main"). No PR unless separately asked. Do that unless told the
+  rules changed again.
 - **Never push a git tag or create a GitHub release yourself.** Tag pushes
   get an HTTP 403 from GitHub (confirmed, across many attempts, not a
   proxy/egress issue -- branch pushes over the identical connection succeed).
