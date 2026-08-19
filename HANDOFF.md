@@ -29,15 +29,27 @@ alone).
 These came from explicit instructions earlier in the project and are easy to
 lose track of -- follow them until told otherwise:
 
-- **A new branch for every update, merged to `main` only on explicit
-  go-ahead.** This workflow has moved around: distinct per-feature branches
-  early on (`claude/mobile-pwa-...`, `claude/tap-reliability-fixes-...`),
-  then a single reused `test` branch, then a stretch of pushing straight to
-  `main`. The user has now restored the original pattern: branch off `main`
-  for each new piece of work, verify it there, push it, then **wait** --
-  don't merge or delete the branch until the user explicitly says to (e.g.
-  "push to main"). No PR unless separately asked. Do that unless told the
-  rules changed again.
+- **A new branch off `main` for every update, auto-merged into
+  `Update-Testing`, merged into `main` only on explicit go-ahead.** This
+  workflow has moved around: distinct per-feature branches early on
+  (`claude/mobile-pwa-...`, `claude/tap-reliability-fixes-...`), then a
+  single reused `test` branch, then a stretch of pushing straight to `main`,
+  then a plain branch-per-update rule. It now has three tiers:
+  1. For each new piece of work, branch off `main`'s *current* state (not
+     off `Update-Testing`) -- `git fetch origin main && git checkout -B
+     claude/<slug> origin/main`. Do the work, verify it, commit, push the
+     branch.
+  2. **Automatically, without waiting for the user:** fetch and check out
+     `Update-Testing`, merge the finished branch into it, resolve any
+     conflicts (branches all forking from `main` independently means later
+     merges can collide with earlier ones -- regenerate rather than
+     hand-merge any generated files, same as this project's general
+     merge-conflict practice), and push `Update-Testing`.
+  3. Leave `main` untouched until the user explicitly says to merge (e.g.
+     "push to main") -- only then merge `Update-Testing` into `main` and
+     push.
+  No PR unless separately asked. Do that unless told the rules changed
+  again.
 - **Never push a git tag or create a GitHub release yourself.** Tag pushes
   get an HTTP 403 from GitHub (confirmed, across many attempts, not a
   proxy/egress issue -- branch pushes over the identical connection succeed).
