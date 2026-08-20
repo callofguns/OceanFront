@@ -54,12 +54,19 @@ import {
   TRAITOR_DISTRUST_LIMIT,
   SPAWN_TROOPS,
   SPAWN_GOLD,
+  TRIBE_TROOPS_CAP_MULTIPLIER,
+  TRIBE_TROOPS_MULTIPLIER,
+  TRIBE_GOLD_MULTIPLIER,
+  TRIBE_COLORS,
+  SPAWN_POOL_OVERSHOOT,
+  SPAWN_POOL_MARGIN,
 } from './config.js';
 import { generateMap, findSpawnPoints } from './map.js';
 import { makeRng, shuffle } from './rng.js';
 import { Player } from './player.js';
-import { NATION_NAMES } from './names.js';
+import { NATION_NAMES, tribeNames } from './names.js';
 import { AiController } from './ai.js';
+import { TribeController } from './tribe.js';
 import { Diplomacy } from './diplomacy.js';
 
 export const NEUTRAL = -1;
@@ -144,29 +151,53 @@ export class Game {
     this._enclosureScanAt = -1;
     this._floodQueue = new Int32Array(this.map.size);
 
-    this.#createPlayers(preset.bots, playerName, playerColor);
+    this.#createPlayers(preset, playerName, playerColor);
     this.diplomacy = new Diplomacy(this);
-    this.spawnCandidates = findSpawnPoints(this.map, this.players.length + 6, this.rng);
+    this.spawnCandidates = findSpawnPoints(
+      this.map,
+      Math.ceil(this.players.length * SPAWN_POOL_OVERSHOOT) + SPAWN_POOL_MARGIN,
+      this.rng
+    );
   }
 
   get human() {
     return this.players[0];
   }
 
-  #createPlayers(botCount, playerName, playerColor) {
+  #createPlayers(preset, playerName, playerColor) {
     const human = new Player(0, playerName || 'You', playerColor || PLAYER_COLORS[0], true);
     this.players.push(human);
+    this.#createNations(preset.bots, human);
+    this.#createTribes(preset.tribes, human);
+  }
 
+  #createNations(count, human) {
     const tier = DIFFICULTIES[this.difficulty];
     const names = shuffle(this.rng, NATION_NAMES.slice());
     const colors = PLAYER_COLORS.filter((c) => c !== human.color);
-    for (let i = 0; i < botCount; i++) {
-      const bot = new Player(i + 1, names[i % names.length], colors[i % colors.length], false);
+    for (let i = 0; i < count; i++) {
+      const bot = new Player(this.players.length, names[i % names.length], colors[i % colors.length], false);
       bot.troopsCapMultiplier = tier.troopsCapMultiplier;
       bot.troopsMultiplier = tier.troopsMultiplier;
       bot.goldMultiplier = tier.goldMultiplier;
       bot.ai = new AiController(bot, this.rng, tier);
       this.players.push(bot);
+    }
+  }
+
+  /** Tribes read nothing from DIFFICULTIES -- see the tribes block in
+   *  config.js. The match's difficulty setting scales nations only. */
+  #createTribes(count, human) {
+    const names = tribeNames(this.rng, count);
+    const colors = TRIBE_COLORS.filter((c) => c !== human.color);
+    for (let i = 0; i < count; i++) {
+      const tribe = new Player(this.players.length, names[i], colors[i % colors.length], false);
+      tribe.isTribe = true;
+      tribe.troopsCapMultiplier = TRIBE_TROOPS_CAP_MULTIPLIER;
+      tribe.troopsMultiplier = TRIBE_TROOPS_MULTIPLIER;
+      tribe.goldMultiplier = TRIBE_GOLD_MULTIPLIER;
+      tribe.ai = new TribeController(tribe, this.rng);
+      this.players.push(tribe);
     }
   }
 
@@ -1051,6 +1082,26 @@ export class Game {
 
   costFor(player, key) {
     return buildingCost(BUILDINGS[key], player.countOf(key));
+  }
+
+  /**
+   * Tear down a structure you own. No refund -- matching what already
+   * happens when a structure is destroyed by a nuke or by its ground going
+   * neutral (#destroyBuilding, above). Not currently exposed in the player
+   * UI; TribeController (src/tribe.js) is the only caller today, but
+   * nothing here is tribe-specific. Returns whether anything was actually
+   * removed.
+   */
+  demolish(player, building) {
+    if (!player || !building) return false;
+    if (building.ownerId !== player.id) return false;
+    // Guards a stale reference: the tile may have changed hands (which
+    // re-owns the building via #transferBuilding) or been nuked flat
+    // between the caller reading it and calling in.
+    if (this.buildingAt.get(building.tile) !== building) return false;
+    this.#destroyBuilding(building);
+    this.dirty = true;
+    return true;
   }
 
   // ------------------------------------------------------------- lifecycle --

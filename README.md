@@ -73,6 +73,14 @@ pays. You can break a pact after it has aged, but betrayal is remembered:
 your traitor score rises, and other nations stop trusting your offers until it
 decays. The AI plays the same game, including turning on you.
 
+**Tribes.** Alongside the full nations, the map is dotted with tribes —
+small, lazy bands that spend the opening minutes grabbing whatever open land
+is nearby. They'll sign any pact offered to them but never propose one
+themselves, tear down anything they capture rather than build it up, and
+pick fights without much regard for how strong the other side is. Easy
+pickings if you find one, and never any tougher on Hard — only the full
+nations scale with difficulty.
+
 **Winning.** Hold 60% of the world's land, or outlast everyone.
 
 ## Controls
@@ -130,7 +138,8 @@ src/
   player.js       troops, troop cap and growth, income
   game.js         tick loop, combat, encirclement, boats, missiles, trade
   diplomacy.js    alliances, offers, betrayal and reputation
-  ai.js           bot personalities and decision-making
+  ai.js           full-nation bot personalities and decision-making
+  tribe.js        the weaker, second AI archetype -- see "Tribes", above
   render.js       camera and canvas drawing
   ui.js           DOM wiring, input (mouse, touch/pinch), mobile chrome
   main.js         fixed-timestep game loop, service worker registration

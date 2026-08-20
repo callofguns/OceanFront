@@ -73,14 +73,22 @@ lose track of -- follow them until told otherwise:
   material for a GitHub release's patch notes: draft them as a bulleted
   "what's new / what's fixed / what's coming next" list whenever a version
   on `main` is ready to tag.
-- **Never push a git tag or create a GitHub release yourself.** Tag pushes
-  get an HTTP 403 from GitHub (confirmed, across many attempts, not a
-  proxy/egress issue -- branch pushes over the identical connection succeed).
-  No GitHub MCP tool creates tags or releases either (only read tools exist:
-  `get_tag`, `get_release_by_tag`, `list_tags`, `list_releases`,
-  `get_latest_release`). When a version on `main` is ready, tell the user
-  the exact commit to tag, the SemVer version it should be, and hand them
-  the drafted patch notes to paste into the release description.
+- **Releases are automated -- `.github/workflows/release.yml` tags and
+  publishes on every push to `main`.** A Claude Code session still can't
+  push a git tag directly (confirmed HTTP 403 from GitHub across many
+  attempts, not a proxy/egress issue -- branch pushes over the identical
+  connection succeed; no GitHub MCP tool creates tags/releases either), but
+  Actions' own `GITHUB_TOKEN` isn't subject to that block. The workflow
+  reads `CURRENT_VERSION` from `src/changelog.js` (see
+  `.github/scripts/release-info.mjs`, runnable/testable standalone) and
+  creates that tag + a GitHub release from that version's `CHANGELOG` entry
+  -- but only if that version isn't tagged yet, so it's a clean no-op on
+  every push that doesn't bump the version. Bumping `CURRENT_VERSION`
+  correctly (see the SemVer bullet, above) is still a human/authoring
+  decision made when the changelog entry is written -- the workflow doesn't
+  guess a bump from a diff, it just stops a correctly-bumped version from
+  ever going untagged. So: get the version bump and changelog entry right
+  before merging to `main`, and the release itself takes care of itself.
 - **Never open a pull request unless explicitly asked.**
 
 ## Architecture at a glance
@@ -93,7 +101,14 @@ lose track of -- follow them until told otherwise:
   or in a browser.
 - `src/player.js` -- a nation's troops (population is troops-only -- see the
   load-bearing lessons below), troop cap and growth, gold income.
-- `src/ai.js` -- bot decision-making, re-evaluated every few seconds per bot.
+- `src/ai.js` -- full-nation bot decision-making, re-evaluated every few
+  seconds per bot.
+- `src/tribe.js` -- the second, much weaker AI archetype (`Player#isTribe`).
+  Small, lazy bands that occupy open land early, sign any pact but never
+  propose one, demolish anything they capture, and pick fights with no
+  relative-strength gate at all. Deliberately independent of `ai.js` --
+  its own tiny border scan, no shared refactor -- and never reads
+  `DIFFICULTIES`; see the tribes block in `config.js`.
 - `src/render.js` / `src/ui.js` -- canvas drawing and all DOM/input wiring,
   including the mobile bottom-sheet layout and touch handling.
 - `tools/simulate.js` -- headless single-match runner with a report at the
@@ -195,6 +210,20 @@ rediscover them a second time.
   pacing-sweeping across every map size and difficulty specifically looking
   for `stalled` results, not just checking that pacing looks reasonable on
   average.
+- **A test predicate that means "the bots" silently absorbs a second AI
+  archetype the day one exists.** `tools/tests/difficulty-ui-verify.mjs`'s
+  cross-tier monotonicity check used `p.ai && p !== g.human` to mean "every
+  non-human player" -- true right up until Tribes (`src/tribe.js`) added a
+  second class of player that also carries a non-null `.ai`. Tribes are
+  deliberately difficulty-*flat* (see the tribes block in `config.js`), so
+  folding them into a difficulty-*monotonicity* average diluted it toward
+  breaking, and `.ai.aggression` doesn't even exist on a `TribeController`,
+  so the average itself came out `NaN`. Fixed by adding `&& !p.isTribe`, but
+  the general shape is worth remembering: any predicate meant to select "the
+  AI-controlled players" (not just this one) needs revisiting the moment a
+  second AI archetype exists, and a completely new player archetype is worth
+  grepping the test suite for `.ai` truthy-checks before assuming it slots
+  in cleanly.
 
 ## How to verify a change
 
@@ -209,9 +238,6 @@ Full details, including what each test actually checks, are in
 
 ## Known open items
 
-- **No recent version is confirmed tagged as a GitHub release.** See the
-  workflow rules above -- this session can't push tags, so ask the user
-  rather than assuming one has been cut.
 - **v2.0.0-beta's new constants are a first-pass calibration, not a fully
   matured balance.** Every new number in `config.js`'s economy/combat
   sections (`TROOPS_TILE_SCALE`/`TROOPS_BASE`, the growth-rate constants,
@@ -226,9 +252,24 @@ Full details, including what each test actually checks, are in
   matchup feels off, `TERRAIN_MAG` (overall combat cost/speed) and
   `TROOPS_TILE_SCALE`/`TROOPS_BASE` (overall population scale) are the two
   broadest levers, per the same pacing-sweep methodology as always.
-- **`small/hard` in `pacing-sweep.mjs` reads at 2.6 minutes**, marginally
-  under the informal "no sub-3-minute blowout" guideline this project has
-  used in past rounds -- every other combo is comfortably above 3 minutes
-  and nothing stalls, so this was judged not worth a further tuning pass on
-  its own, but is worth a second look if small/hard specifically feels too
-  fast in play.
+- **`small/hard` in `pacing-sweep.mjs`** used to read at a marginal 2.6
+  minutes; adding tribes (below) pushed it to ~3.1 minutes as a side effect
+  (more contestants for the same land), which happens to resolve the old
+  "no sub-3-minute blowout" flag on its own -- not something that was
+  specifically tuned for, just worth knowing why the number moved.
+- **Tribes' new constants (`src/tribe.js`, the tribes block in
+  `config.js`) are a first-pass calibration, not a fully matured balance.**
+  `TRIBE_THINK_RANGE`/`TRIBE_TRIGGER_RANGE`/`TRIBE_SERIOUS_SKIP_CHANCE`/
+  `TRIBE_TRAITOR_ATTACK_CHANCE` are direct ports of the archetype's own
+  upstream randomization ranges and define *what a tribe is* -- don't tune
+  those casually, changing them changes the archetype, not the balance.
+  `MAP_PRESETS.*.tribes` (the per-map tribe count) and
+  `TRIBE_TROOPS_CAP_MULTIPLIER`/`TRIBE_TROOPS_MULTIPLIER`/
+  `TRIBE_GOLD_MULTIPLIER` are the real retune levers, in that order, if
+  pacing needs it -- checked once against a full `pacing-sweep.mjs` run
+  (zero stalls across all 45 size/difficulty/seed combos, every tribe slot
+  spawned successfully every time, land claimed stayed ~99%+, and average
+  tick time actually *dropped* almost everywhere despite the larger player
+  count, since a tribe's think cadence is far lazier than a nation's) but
+  not yet played by a human. If a match feels too crowded or too empty
+  early on, `MAP_PRESETS.*.tribes` is the first thing to adjust.

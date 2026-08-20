@@ -183,6 +183,83 @@ export const AI_BETRAYAL_WEAK_ALLY_RATIO = 0.2;
  *  the bot's aggression. */
 export const AI_BETRAYAL_WEAK_ALLY_CHANCE = 0.15;
 
+// ----------------------------------------------------------------- tribes ---
+/**
+ * Tribes are the game's second AI archetype: small, lazy bands that exist
+ * to occupy open land early so nobody gets a free unclaimed-land walkover.
+ * They are deliberately NOT scaled by the match's difficulty setting --
+ * every number here is flat, and weaker than even Easy's nation
+ * multipliers, so a tribe never grows into a real rival no matter what tier
+ * is picked. See src/tribe.js.
+ */
+
+/** Ticks between re-evaluations. Rolled once per tribe at construction and
+ *  held fixed for the whole match (unlike a nation, which re-rolls a fresh
+ *  value inside its range every think) -- 4-8s at 10 ticks/s, against
+ *  Normal's 1.8-3.4s (DIFFICULTIES.normal.thinkRange). */
+export const TRIBE_THINK_RANGE = [40, 80];
+
+/** Standing-army fullness (Player#fillRatio) a tribe wants before it will
+ *  commit to any fight, rolled once per tribe. Compare DIFFICULTIES'
+ *  readiness: 0.55 easy / 0.45 normal / 0.35 hard -- tribes are the laziest
+ *  thing on the map. */
+export const TRIBE_TRIGGER_RANGE = [0.5, 0.6];
+
+/** Share of current troops committed per attack -- the same flat
+ *  fraction-of-current-troops idiom as AiController#makeWar, with no
+ *  aggression or difficulty term. */
+export const TRIBE_ATTACK_COMMIT = 0.5;
+/** Open land never fights back, and taking it is the whole point of a
+ *  tribe, so this matches a nation's own neutral-grab commit. */
+export const TRIBE_NEUTRAL_COMMIT = 0.55;
+
+/** Chance a bordering full nation (or the human) is skipped over in favour
+ *  of continuing the search for a softer target. Tribes mildly prefer
+ *  picking on each other, but will still fight a nation or the player
+ *  directly -- there is no difficulty-based leniency toward the human
+ *  here, unlike nations. */
+export const TRIBE_SERIOUS_SKIP_CHANCE = 0.5;
+
+/** Chance a bordering known traitor gets attacked on sight, before the
+ *  ordinary shuffle. */
+export const TRIBE_TRAITOR_ATTACK_CHANCE = 1 / 3;
+/** Traitor score at which a tribe treats a neighbour as fair game. Equal to
+ *  BETRAYAL_PENALTY (one betrayal marks you), deliberately NOT
+ *  TRAITOR_DISTRUST_LIMIT -- that needs several betrayals and would make
+ *  this branch almost unreachable for a tribe. */
+export const TRIBE_TRAITOR_THRESHOLD = 1;
+
+/** Flat economy scaling, applied instead of a DIFFICULTIES tier. Weaker
+ *  than Easy's 0.5 / 0.9 / 0.6 across the board. */
+export const TRIBE_TROOPS_CAP_MULTIPLIER = 0.35;
+export const TRIBE_TROOPS_MULTIPLIER = 0.75;
+export const TRIBE_GOLD_MULTIPLIER = 0.4;
+
+/** Naval fallback, only when there is nothing at all to attack by land --
+ *  a tribe stranded on an island would otherwise sit inert for the whole
+ *  match. Lazier than a nation's own fallback and, unlike a nation, never
+ *  fires as unprompted harassment while land targets exist. */
+export const TRIBE_BOAT_CHANCE = 0.25;
+export const TRIBE_BOAT_COMMIT = 0.4;
+export const TRIBE_BOAT_MIN_TROOPS_FACTOR = 4;
+
+/** How many extra AI-controlled players each map size gets on top of its
+ *  `bots` (full nations) -- see MAP_PRESETS, below. First-pass counts,
+ *  measured against findSpawnPoints' spawn-density floor (no fallback
+ *  spawns across a wide seed sweep at these counts) rather than guessed;
+ *  tune here first if pacing needs it. */
+export const TRIBE_COUNTS = { small: 6, medium: 10, large: 16 };
+
+/** Muted palette, kept separate from PLAYER_COLORS so tribes read as
+ *  background at a glance and never collide with a nation's colour. 16
+ *  entries = the largest tribe count above, so no reuse within one match. */
+export const TRIBE_COLORS = [
+  '#a3705f', '#6f8fa3', '#7f9c6d', '#a99154',
+  '#8b7ba6', '#a86f86', '#5f9b93', '#9c8b6a',
+  '#7d8aa0', '#8fa05f', '#b0846a', '#6b95a8',
+  '#a37f9c', '#84a58e', '#9d7a6a', '#75879b',
+];
+
 // ---------------------------------------------------------------- economy ---
 //
 // Population is troops-only, matching OpenFrontIO's model exactly (no
@@ -406,10 +483,20 @@ export const VICTORY_LAND_SHARE = 0.6;
 // ----------------------------------------------------------------- maps -----
 
 export const MAP_PRESETS = {
-  small: { key: 'small', label: 'Small', w: 300, h: 190, bots: 8 },
-  medium: { key: 'medium', label: 'Medium', w: 420, h: 260, bots: 14 },
-  large: { key: 'large', label: 'Large', w: 560, h: 340, bots: 22 },
+  small: { key: 'small', label: 'Small', w: 300, h: 190, bots: 8, tribes: TRIBE_COUNTS.small },
+  medium: { key: 'medium', label: 'Medium', w: 420, h: 260, bots: 14, tribes: TRIBE_COUNTS.medium },
+  large: { key: 'large', label: 'Large', w: 560, h: 340, bots: 22, tribes: TRIBE_COUNTS.large },
 };
+
+/**
+ * How many spawn candidates to request relative to the number of players
+ * that actually need one. Used to be a flat `players.length + 6` against a
+ * fixed ~9-23 player field; with tribes roughly doubling that field, a
+ * proportional overshoot keeps the same relative slack instead of the same
+ * absolute one.
+ */
+export const SPAWN_POOL_OVERSHOOT = 1.25;
+export const SPAWN_POOL_MARGIN = 6;
 
 /**
  * Bot difficulty, chosen on the main menu. Scales bots on five axes:

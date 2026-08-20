@@ -376,10 +376,15 @@ export class Renderer {
       const size = Math.max(10, Math.min(30, p.labelScale * this.camera.scale * 0.5));
       if (size < 9) continue;
 
-      ctx.font = `600 ${size}px "Inter", system-ui, sans-serif`;
-      ctx.lineWidth = Math.max(2, size / 6);
+      // Tribes read as background on the map too: a touch smaller, lighter
+      // weight, and less than fully opaque, so a glance still reads which
+      // labels are real rivals.
+      const weight = p.isTribe ? 500 : 600;
+      const labelSize = p.isTribe ? size * 0.85 : size;
+      ctx.font = `${weight} ${labelSize}px "Inter", system-ui, sans-serif`;
+      ctx.lineWidth = Math.max(2, labelSize / 6);
       ctx.strokeStyle = 'rgba(0,0,0,0.75)';
-      ctx.fillStyle = '#ffffff';
+      ctx.fillStyle = p.isTribe ? 'rgba(255,255,255,0.78)' : '#ffffff';
       // Mark nations the player is sworn to, so the map reads at a glance.
       const label = game.human.allies.has(p.id) ? `🤝 ${p.name}` : p.name;
       ctx.strokeText(label, s.x, s.y - size * 0.55);
