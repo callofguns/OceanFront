@@ -210,16 +210,16 @@ export class UI {
     });
   }
 
-  /** Small collapsible version tag + release history at the foot of the main menu. */
+  /** Small version tag at the foot of the main menu; opens the release
+   *  history as a popup, on both desktop and mobile -- the same `.overlay`/
+   *  `.dialog` pattern the start/end screens already use, not the mobile
+   *  bottom-sheet system (this doesn't need to survive a narrow-viewport
+   *  swipe-up interaction, just to appear centered over whatever's behind it). */
   #buildChangelog() {
-    const details = $('changelog');
+    const tag = $('changelog-tag');
+    tag.textContent = CURRENT_VERSION;
 
-    const summary = document.createElement('summary');
-    summary.textContent = CURRENT_VERSION;
-    details.appendChild(summary);
-
-    const entries = document.createElement('div');
-    entries.className = 'entries';
+    const entries = $('changelog-entries');
     for (const entry of CHANGELOG) {
       const version = document.createElement('div');
       version.className = 'entry-version';
@@ -234,7 +234,19 @@ export class UI {
       }
       entries.appendChild(list);
     }
-    details.appendChild(entries);
+
+    const modal = $('changelog-modal');
+    const close = () => { modal.hidden = true; };
+    tag.addEventListener('click', () => { modal.hidden = false; });
+    $('changelog-close').addEventListener('click', close);
+    // Tapping/clicking the backdrop closes it; clicking inside the dialog
+    // (including its own empty padding, which is still a `.dialog` target,
+    // not a child's) does not -- e.target === modal is only true when the
+    // click landed on the fixed, full-screen overlay itself.
+    modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !modal.hidden) close();
+    });
   }
 
   // -------------------------------------------------------------- attach ---
@@ -437,6 +449,10 @@ export class UI {
   }
 
   #refreshModeUi() {
+    // Nothing to refresh before a match has actually built the build menu --
+    // reachable pre-game via cancelModes(), since Escape calls it
+    // unconditionally regardless of whether a game is running.
+    if (!this.buildButtons) return;
     for (const [key, { btn }] of Object.entries(this.buildButtons)) {
       btn.classList.toggle('is-active', this.state.buildMode === key);
     }
