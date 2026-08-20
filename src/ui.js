@@ -12,6 +12,7 @@ import {
   NUKE_COST,
   DIFFICULTIES,
   DEFAULT_DIFFICULTY,
+  KEYBOARD_PAN_SPEED,
 } from './config.js';
 import { formatShort } from './render.js';
 import { CURRENT_VERSION, CHANGELOG } from './changelog.js';
@@ -612,7 +613,7 @@ export class UI {
   /** Keyboard panning, called once per frame from the main loop. */
   applyKeyboardPan(dt) {
     if (!this.renderer || this.keys.size === 0) return;
-    const step = 0.75 * dt;
+    const step = KEYBOARD_PAN_SPEED * dt;
     let dx = 0;
     let dy = 0;
     if (this.keys.has('a') || this.keys.has('arrowleft')) dx += step;

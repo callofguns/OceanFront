@@ -2,9 +2,15 @@
 // main menu. CURRENT_VERSION drives the visible tag -- bump it whenever a
 // new entry is added below. Newest first.
 
-export const CURRENT_VERSION = 'v2.0.0-beta';
+export const CURRENT_VERSION = 'v2.1.0-beta';
 
 export const CHANGELOG = [
+  {
+    version: 'v2.1.0-beta',
+    notes: [
+      'WASD and arrow-key panning is much more responsive now, over 20x faster than before -- flicking across the map takes a beat, not a scroll.',
+    ],
+  },
   {
     version: 'v2.0.0-beta',
     notes: [

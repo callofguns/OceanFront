@@ -470,3 +470,22 @@ export const PLAYER_COLORS = [
   '#26a69a', '#d4a017', '#5d8aa8', '#b5651d', '#68a357',
   '#cc4b3a', '#4f9d9d', '#a3673f', '#6a8caf',
 ];
+
+// ---------------------------------------------------------------- camera ----
+
+/**
+ * WASD/arrow-key pan speed, in screen pixels per `applyKeyboardPan` time
+ * unit (see `UI#applyKeyboardPan` -- frame-rate independent, so this reads
+ * directly as "pixels per ~1/60s of real time" the same way it always has).
+ * OpenFrontIO drives its own keyboard pan off a flat `PAN_SPEED = 5`
+ * screen-pixel step fired on a ~4ms clamped timer (a `setInterval(fn, 1)`,
+ * which every mainstream browser clamps to ~4ms once it's a few calls deep)
+ * -- roughly 1200px/s of real screen movement, not scaled by zoom either,
+ * the same "flat screen-pixel offset" shape OceanFront's own pan already
+ * uses. That's the piece worth porting; the literal `5`/`~4ms` pair isn't
+ * meaningful on its own since it's an artifact of a different timer
+ * mechanism, not a real speed. Retuned to land in the same ballpark
+ * (~960px/s at 60fps) using OceanFront's existing per-frame model instead of
+ * adding a second timer -- was `0.75` (~45px/s), over 20x slower than this.
+ */
+export const KEYBOARD_PAN_SPEED = 16;

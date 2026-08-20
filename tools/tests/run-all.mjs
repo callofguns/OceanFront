@@ -30,6 +30,7 @@ const BROWSER_TESTS = [
   'version-tag-check.mjs',
   'difficulty-ui-verify.mjs',
   'pop-bar-test.mjs',
+  'keyboard-pan-test.mjs',
 ];
 
 function run(script, env = {}) {
