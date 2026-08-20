@@ -64,15 +64,16 @@ lose track of -- follow them until told otherwise:
      push.
   No PR unless separately asked. Do that unless told the rules changed
   again.
-- **Releases use Semantic Versioning (`vMAJOR.MINOR.PATCH`) with written
-  patch notes.** Major = a huge change or a full release (reserved for
-  leaving beta); minor = a new feature; patch = a small fix -- pick the
-  version bump by what actually changed, not just an incrementing minor
-  number regardless. `src/changelog.js`'s in-game `CURRENT_VERSION`/
-  `CHANGELOG` should follow this same discipline, and doubles as the source
-  material for a GitHub release's patch notes: draft them as a bulleted
-  "what's new / what's fixed / what's coming next" list whenever a version
-  on `main` is ready to tag.
+- **Releases use Semantic Versioning (`vMAJOR.MINOR.PATCH`), and the user
+  picks the version number, not the session.** Previously the session chose
+  the bump itself (major = a huge change or leaving beta, minor = a new
+  feature, patch = a small fix). Now: when a round of work is ready to ship
+  (a changelog entry is needed), ask the user what `CURRENT_VERSION` should
+  be instead of deciding it. Everything else about the changelog is
+  unchanged -- `src/changelog.js`'s `CHANGELOG` entry is still written as a
+  bulleted "what's new" list and still doubles as the source material for
+  the GitHub release's patch notes, only the version number itself is the
+  user's call now.
 - **Releases are automated -- `.github/workflows/release.yml` tags and
   publishes on every push to `main`.** A Claude Code session still can't
   push a git tag directly (confirmed HTTP 403 from GitHub across many
