@@ -109,6 +109,24 @@ lose track of -- follow them until told otherwise:
   OceanFront's own scale -- see the rescaling lesson below -- and never let
   OpenFrontIO's own name appear in anything player-facing (`src/changelog.js`
   entries, in-game text); it's fine in code comments and this file.
+- **Avoid em dashes entirely and limit semicolons, in every piece of writing
+  from here on.** Applies to player-facing text first (`index.html` copy,
+  `src/changelog.js` notes) and to new prose written for docs/comments/commit
+  messages generally. Use a period, comma, or colon instead of an em dash.
+  Existing docs and code comments have not been swept for this
+  retroactively (there are plenty left in this file, `styles.css`, and
+  elsewhere) except where a file was already being touched for another
+  reason. Fix them opportunistically when you're in a file anyway, not as a
+  standalone sweep unless asked.
+- **A UI overhaul is planned for a future update, not yet started.** Apple-
+  style: minimal, clean, premium. Monochrome base palette with color used
+  sparingly, for buttons and highlighted stats, not throughout. San
+  Francisco for the font (with a sane fallback stack for non-Apple
+  platforms, since this game runs everywhere). Real attention to spacing
+  and how screen space is used, especially on mobile. Also referenced
+  against OpenFrontIO's own UI (see the bullet above for how to research
+  that when the round actually starts). Nothing has been built toward this
+  yet, it's recorded here so it isn't lost before that round begins.
 
 ## Architecture at a glance
 
@@ -243,6 +261,23 @@ rediscover them a second time.
   second AI archetype exists, and a completely new player archetype is worth
   grepping the test suite for `.ai` truthy-checks before assuming it slots
   in cleanly.
+- **A flex container centering an overflowing item with `overflow-y: auto`
+  clips the top, and that clipped part cannot be reached by scrolling.**
+  `.overlay` (the start screen, end screen, and the changelog popup) uses
+  `align-items: center` to center `.dialog`. Fine when the dialog fits the
+  viewport. Once it's taller (a phone with the full main-menu form and
+  actual browser chrome eating real height), the browser centers it by
+  overflowing equally above and below, `overflow-y: auto` only ever lets
+  `scrollTop` grow positive, so the part that overflowed upward stays
+  permanently out of reach. This is a real, common CSS gotcha, not specific
+  to this project. The bug report was "the main menu gets cut off at the
+  top on mobile and doesn't scroll." Fixed by switching `.overlay` to
+  `align-items: flex-start` under the existing mobile breakpoint
+  (`tools/tests/tap-and-narrow-test.mjs` now checks the dialog's top is
+  never clipped and the bottom is reachable by scrolling, at 375x667).
+  Worth checking again if `.overlay`/`.dialog` content grows taller, or if
+  the same `align-items: center` + `overflow: auto` shape gets reused
+  anywhere else.
 
 ## How to verify a change
 

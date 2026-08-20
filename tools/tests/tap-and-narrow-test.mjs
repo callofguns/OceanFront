@@ -30,6 +30,28 @@ const browser = await chromium.launch({ headless: true });
   else bad('start screen overflows at 375px');
   await page.screenshot({ path: `${SHOTS}/t01-se-start.png` });
 
+  // The full main-menu form is taller than a 667px-tall phone. .overlay used
+  // to center its .dialog with align-items: center, which clips the top of
+  // an overflowing centered flex item and leaves that clipped part
+  // unreachable by scrolling, in every major mobile browser -- the actual
+  // regression this project hit ("the main menu gets cut off at the top on
+  // mobile and doesn't scroll"). Confirm the top is never clipped, and the
+  // bottom (the Set sail button) is reachable by scrolling the overlay.
+  const notClipped = await page.evaluate(() => document.querySelector('#startscreen .dialog').getBoundingClientRect().top >= 0);
+  if (notClipped) ok('start screen: dialog top is not clipped above the viewport');
+  else bad('start screen: dialog top is clipped and would be unreachable by scrolling');
+
+  const reachedBottom = await page.evaluate(() => {
+    const overlay = document.getElementById('startscreen');
+    overlay.scrollTop = overlay.scrollHeight;
+    const btn = document.getElementById('btn-start').getBoundingClientRect();
+    const bottomVisible = btn.bottom <= window.innerHeight + 1;
+    overlay.scrollTop = 0; // leave scroll state clean for what follows
+    return bottomVisible;
+  });
+  if (reachedBottom) ok('start screen: scrolling the overlay reaches the Set sail button');
+  else bad('start screen: the Set sail button is not reachable by scrolling');
+
   await page.tap('#btn-start');
   await page.waitForFunction(() => window.OceanFront?.game != null);
   const spawnTile = await page.evaluate(() => window.OceanFront.game.spawnCandidates[0]);
