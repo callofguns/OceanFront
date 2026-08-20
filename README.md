@@ -81,6 +81,14 @@ pick fights without much regard for how strong the other side is. Easy
 pickings if you find one, and never any tougher on Hard. Only the full
 nations scale with difficulty.
 
+**Maps.** Small, Medium and Large generate a fresh world from your seed.
+**World** is hand-drawn instead: the real continents, with mountain ranges
+where they belong and rivers running down to the sea. Its coastlines are the
+same in every match. Rivers are water, so an army cannot march across one.
+Crossing takes a boat, which makes a river a genuine border rather than a
+line on the ground. Maps live in `src/maps/` as plain ASCII grids and are
+meant to be edited by hand, one character per cell.
+
 **Winning.** Hold 60% of the world's land, or outlast everyone.
 
 ## Controls
@@ -134,7 +142,8 @@ server.js         zero-dependency static file server
 src/
   config.js       every balance constant in one table
   rng.js          seeded RNG and value noise
-  map.js          island generation, ocean labelling, spawn selection
+  map.js          island generation, hand-made map loading, spawn selection
+  maps/           hand-drawn maps, authored as plain ASCII grids
   player.js       troops, troop cap and growth, income
   game.js         tick loop, combat, encirclement, boats, missiles, trade
   diplomacy.js    alliances, offers, betrayal and reputation
@@ -185,8 +194,10 @@ New to this project? Read `HANDOFF.md` first.
 
 ## Notes
 
-- Worlds are fully deterministic. The same seed always generates the same map
-  and the same starting positions.
+- Generated worlds are fully deterministic. The same seed always produces the
+  same map and the same starting positions. Hand-made maps work
+  the other way round: their terrain is fixed and never varies, and the seed
+  only decides where everyone starts and how the match plays out.
 - The territory layer is rasterized one pixel per tile into an offscreen canvas
   and only redrawn when ownership actually changes.
 - A live match is exposed as `window.OceanFront` for debugging from the console.

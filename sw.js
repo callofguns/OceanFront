@@ -7,7 +7,7 @@
 // ones from storage -- it is not required for routine updates to propagate,
 // since those are picked up on the very next fetch regardless.
 
-const CACHE_VERSION = 'v5';
+const CACHE_VERSION = 'v6';
 const CACHE_NAME = `oceanfront-${CACHE_VERSION}`;
 
 const PRECACHE = [
@@ -21,6 +21,7 @@ const PRECACHE = [
   'src/game.js',
   'src/main.js',
   'src/map.js',
+  'src/maps/world.js',
   'src/names.js',
   'src/player.js',
   'src/render.js',

@@ -20,8 +20,8 @@ On `main` (or `Update-Testing`, staged for a later merge -- check which with
 `git log`). Latest version tag in-game is whatever `CURRENT_VERSION` says in
 `src/changelog.js` -- check there and with `git log -1` for the exact commit,
 rather than trusting a hash written here, since both move. As of this
-hand-off that's **v2.3.0-beta**, the Apple-style visual redesign plus the
-new in-match pause menu (see the load-bearing lessons below); whether any
+hand-off that's **v2.5.0-beta**, hand-made maps plus the World map (see the
+load-bearing lessons below). Whether any
 recent version has been cut as a GitHub release is worth asking the user
 rather than assuming (see below -- this session can't push tags itself, so
 there's no way to check from git alone).
@@ -168,6 +168,12 @@ lose track of -- follow them until told otherwise:
   relative-strength gate at all. Deliberately independent of `ai.js` --
   its own tiny border scan, no shared refactor -- and never reads
   `DIFFICULTIES`; see the tribes block in `config.js`.
+- `src/map.js` -- both map paths: `generateMap()` builds a world from noise,
+  `buildAuthoredMap()` scales up a hand-drawn ASCII grid. Both return the
+  same `GameMap`, so nothing downstream knows or cares which ran.
+- `src/maps/` -- hand-drawn maps as plain ASCII grids, one character per
+  cell. Edit them directly; `tools/map-preview.mjs` renders one to a PNG so
+  the result can actually be looked at while editing.
 - `src/render.js` / `src/ui.js` -- canvas drawing and all DOM/input wiring,
   including the mobile bottom-sheet layout and touch handling.
 - `tools/simulate.js` -- headless single-match runner with a report at the
@@ -347,12 +353,56 @@ rediscover them a second time.
   `onStart`/`onSpeed`/`onExit` first, and only add a new callback if none of
   them actually cover it.
 
+- **Rivers are ordinary water tiles, and that is deliberate.** OpenFrontIO
+  has no river terrain type either (`TerrainType` is
+  `Plains, Highland, Mountain, Ocean, Impassable`), and its attack execution
+  skips every water neighbour outright, so rivers there block land attacks
+  exactly like open sea. OceanFront matches that: a river is `OCEAN`, an
+  army cannot cross one, and `src/ui.js` already falls through from
+  `game.borders()` to `game.launchBoat()`, so clicking a rival across a
+  river naturally launches a boat. Deliberately **not** ported:
+  OpenFrontIO's `shoreReachableNeighbors()` (which counts players separated
+  by up to 4 water tiles as neighbours, for its relations graph only).
+  Wiring that into `Game#borders()` here would make `borders()` return
+  true, `launchAttack` would fire, and `#seedFrontier` skips ocean
+  neighbours -- so the attack would seed an empty frontier and silently eat
+  the committed troops. That is a bug, not a feature.
+- **An authored river MUST reach the sea, and that is enforced in code, not
+  by eye.** Because a river is just water, the only way across is a boat,
+  and `Game#findWaterPath` can only route through water connected to the
+  water it launched from. A river stranded in its own ocean component is
+  therefore not a crossing at all, it is a wall no fleet can ever reach.
+  Authored geography makes that trivially easy to do by accident: a single
+  diagonal land bridge sealed the whole Mediterranean on the first draft of
+  the world map, stranding the Danube, Volga and Nile together. Hand-fixing
+  the grid turned into whack-a-mole, so `connectRiversToSea()` in
+  `src/map.js` now guarantees the invariant for every map, and
+  `world-map-test.mjs` asserts it. Bodies of water the author drew as
+  enclosed still stay inland lakes -- only components holding a *carved
+  river* get joined up.
+- **`labelOceans()` clears `oceanComponent` before filling.** It used to
+  skip any tile already carrying an id, which is fine when it runs once but
+  silently wrong on a second pass: newly carved water got fresh ids while
+  the bodies it had just joined kept their old, separate ones, so a merge
+  looked like it had done nothing. Anything that changes terrain after the
+  first labelling has to re-label, so the function has to be safe to
+  re-run.
+- **Watch for float32 round-trips in map code.** The authored-map pipeline
+  stores its coarse height field in a `Float32Array`, and a
+  `coarse[i] <= AUTHORED_HEIGHT[OCEAN]` test against the double it was
+  written from is always false: `float32(0.18)` is `0.180000007...`. That
+  one silently disabled river-mouth carving and cost a debugging round.
+  Where a typed array holds a value that later needs comparing for
+  equality, record the fact in a separate flag array instead.
+
 ## How to verify a change
 
 ```sh
 npm install && npm test      # full committed regression suite
 npm run test:sim             # one headless match with a summary report
 node tools/tests/pacing-sweep.mjs "label"   # balance sweep, run before/after a config.js edit and diff
+node tools/map-preview.mjs --size=world     # render a map to a PNG to look at
+node tools/map-preview.mjs --size=world --crop=200,50,150,120 --zoom=3   # inspect at tile scale
 ```
 
 Full details, including what each test actually checks, are in
@@ -395,6 +445,19 @@ Full details, including what each test actually checks, are in
   count, since a tribe's think cadence is far lazier than a nation's) but
   not yet played by a human. If a match feels too crowded or too empty
   early on, `MAP_PRESETS.*.tribes` is the first thing to adjust.
+- **The World map (v2.5.0-beta) is a first authored map, verified but not
+  played by a human.** `tools/simulate.js --size=world` across several seeds
+  lands at 4.0 to 6.8 game-minutes against `medium`'s 4.7 to 6.1, with lower
+  tick cost and no stalls, and it holds ~40% land against the procedural
+  generator's 46%. Land claimed does settle a little lower than a generated
+  map's (83 to 99% versus 99.9%), which is expected: rivers and island
+  chains leave pockets that are awkward to reach. The map itself is
+  `src/maps/world.js` and is plain hand-editable data, so anything that
+  reads wrong is a character edit away. `AUTHORED_*` in `src/map.js` are the
+  levers for how the whole pipeline renders: `AUTHORED_SEA` for how fat the
+  continents come out, `AUTHORED_NOISE`/`_COARSE` for how crinkled the
+  coastlines are, `AUTHORED_RELIEF` for shading variation, `RIVER_MEANDER`
+  for how much rivers wander.
 - **The v2.3.0-beta visual redesign and pause menu are verified by the
   automated suite and a manual desktop/375px pass, not yet by a human
   playing a real match on a real phone.** The design tokens (`styles.css`'s

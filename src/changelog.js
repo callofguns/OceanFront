@@ -2,9 +2,32 @@
 // main menu. CURRENT_VERSION drives the visible tag, bump it whenever a
 // new entry is added below. Newest first.
 
-export const CURRENT_VERSION = 'v2.4.0-beta';
+export const CURRENT_VERSION = 'v2.5.0-beta';
+
+/**
+ * The roadmap, newest work first, shown as "Coming soon" above the release
+ * history. Deliberately just ordered titles with no dates or version numbers
+ * attached: this is what is being worked towards, not a set of promises.
+ */
+export const UPCOMING = [
+  'More hand-made maps',
+  'Sound and music',
+  'Player profile panel',
+  'Better UI',
+  'Multiplayer',
+  'Local multiplayer',
+  'Duo, trio and team games',
+];
 
 export const CHANGELOG = [
+  {
+    version: 'v2.5.0-beta',
+    notes: [
+      'Hand-made maps are here, starting with the World: a drawn map of the real continents, with mountain ranges where they belong and rivers running down to the sea. Pick it from the World row on the main menu, alongside the usual randomly generated sizes. Unlike those, its coastlines are the same every time. The seed still decides where everyone starts and how the match unfolds.',
+      'Rivers are water, so armies cannot march across one. You need a boat. That makes a river a real border worth holding, and a coastline worth watching.',
+      'The updates window now opens with a Coming soon list, so you can see what is being worked on next.',
+    ],
+  },
   {
     version: 'v2.4.0-beta',
     notes: [

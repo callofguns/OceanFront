@@ -61,7 +61,7 @@ import {
   SPAWN_POOL_OVERSHOOT,
   SPAWN_POOL_MARGIN,
 } from './config.js';
-import { generateMap, findSpawnPoints } from './map.js';
+import { generateMap, buildAuthoredMap, findSpawnPoints } from './map.js';
 import { makeRng, shuffle } from './rng.js';
 import { Player } from './player.js';
 import { NATION_NAMES, tribeNames } from './names.js';
@@ -116,7 +116,13 @@ export class Game {
     const { preset, seed, playerName, playerColor, difficulty } = options;
     this.seed = seed >>> 0;
     this.rng = makeRng(this.seed ^ 0x9e3779b9);
-    this.map = generateMap(preset.w, preset.h, this.seed);
+    // A preset carrying `authored` plays a hand-drawn map (src/maps/) at a
+    // fixed size; the seed still drives spawns and the AI, it just never
+    // touches the terrain. Everything downstream sees the same GameMap
+    // either way.
+    this.map = preset.authored
+      ? buildAuthoredMap(preset.authored, this.seed)
+      : generateMap(preset.w, preset.h, this.seed);
     this.preset = preset;
     this.difficulty = DIFFICULTIES[difficulty] ? difficulty : DEFAULT_DIFFICULTY;
 
