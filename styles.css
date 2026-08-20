@@ -626,8 +626,65 @@ input[type="range"]::-moz-range-thumb {
 .tagline { margin: 0 0 var(--space-4); color: var(--ink-dim); font-size: 13.5px; }
 .muted { color: var(--ink-faint); font-weight: 400; }
 
+/* ------------------------------------------------------------ landing --- */
+/*
+ * The main menu (#startscreen) is a real top-to-bottom page, not a card
+ * floating over a blurred map -- matching how OpenFrontIO's own landing
+ * page is actually built (a slim nav bar, a hero identity block, a big
+ * card grid, a footer), read off its real source rather than guessed.
+ * This overrides just the parts of .overlay that make it a centered card
+ * (display/background/padding); the fixed/inset/z-index/scroll mechanics
+ * stay shared with #endscreen and the popups, which are untouched.
+ */
+#startscreen {
+  display: block;
+  background: var(--bg);
+  padding: 0;
+}
+
+.menu-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--edge);
+}
+
+.landing-body {
+  padding: var(--space-6) var(--space-4);
+}
+
+/* Wider and lighter than the popup .dialog default -- this is the page's
+   main content column now, not a small floating card. */
+#startscreen .dialog {
+  width: min(720px, 100%);
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-6) var(--space-5);
+  background: none;
+  border: none;
+  box-shadow: none;
+}
+
+/* The name/colour fields, washed toward the picked colour -- the direct
+   equivalent of OpenFrontIO's username input laid over the player's
+   selected cosmetic pattern, done with a colour wash since OceanFront has
+   no skins/patterns to render. --wash is set from src/ui.js's existing
+   colour-dot click handler. */
+.hero-identity {
+  --wash: var(--accent);
+  position: relative;
+  padding: var(--space-4);
+  margin-bottom: var(--space-5);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--edge);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--wash) 20%, var(--panel-solid)), var(--panel-solid) 70%);
+}
+.hero-identity .field:last-child { margin-bottom: 0; }
+
 /* Groups a run of related fields with a small eyebrow title -- the main
-   menu's Nation / World sections. Same small-uppercase-label voice as
+   menu's World / Match sections. Same small-uppercase-label voice as
    .panel h2 and .field label, just one step up in scope. */
 .menu-section { margin-bottom: var(--space-4); }
 .menu-section:last-of-type { margin-bottom: var(--space-3); }
@@ -695,19 +752,47 @@ input[type="range"]::-moz-range-thumb {
 }
 .choice small { display: block; font-size: 10.5px; opacity: 0.75; }
 
-/* The primary action sits in a lightly separated footer -- a top hairline
-   and a faint tint distinguish it from the scrollable content above,
-   echoing a sticky action bar without the extra height-constrained
-   scrolling machinery a truly pinned footer would need (which would risk
-   reopening the mobile clipping bug already fixed for .overlay). */
-.menu-footer {
-  margin-top: var(--space-3);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--edge);
+/* World size: the one choice on this menu that plays the role OpenFrontIO's
+   own big lobby-card grid does -- the closest thing a single-player game
+   has to "which game do I join". Same .choice element and DOM order as
+   before (every test that clicks #size-picker .choice:nth-child(1) for
+   Small still works untouched), just given real card weight instead of a
+   plain button row. */
+.size-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-3); }
+.size-card {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--space-4) var(--space-3);
+  text-align: center;
+  font-size: 13.5px;
 }
+.size-card-body { display: flex; flex-direction: column; align-items: center; }
+.size-card small { margin-top: 4px; }
 
+/* An abstract scale indicator (filled squares) standing in for a map
+   thumbnail -- there is no map-preview image pipeline in this project, and
+   this project doesn't pull in external assets, so this is deliberately
+   iconography instead of art. */
+.size-scale { display: flex; gap: 3px; margin-bottom: var(--space-2); }
+.size-scale-seg {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--edge-strong);
+}
+.size-card.is-active .size-scale-seg.is-filled { background: var(--accent); }
+.size-card:not(.is-active) .size-scale-seg.is-filled { background: var(--ink-faint); }
+
+/* The top margin replaces what used to be a lightly bordered footer block
+   holding the button plus the help/version links -- those moved to the
+   page's own top bar and footer, so this just needs breathing room above
+   it now. */
 .primary {
   width: 100%;
+  margin-top: var(--space-2);
   padding: 13px;
   border: none;
   border-radius: var(--radius);
@@ -722,17 +807,9 @@ input[type="range"]::-moz-range-thumb {
   .primary:hover { filter: brightness(1.08); }
 }
 
-/* A compact row of small pill links under the primary button -- "How to
-   play" doesn't need the same visual weight as Set sail, and a full-height
-   secondary button here was pushing the dialog tall enough to clip the
-   primary button below the fold on a real 390x844 phone. */
-.menu-footer-links {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-3);
-  margin-top: var(--space-3);
-}
+/* "How to play", now a small pill button in the top bar rather than a
+   full-height secondary button in the card -- a full-height one there was
+   pushing the primary button below the fold on a real 390x844 phone. */
 .link-btn {
   padding: 4px 10px;
   border-radius: 999px;
@@ -746,6 +823,17 @@ input[type="range"]::-moz-range-thumb {
 }
 @media (hover: hover) {
   .link-btn:hover { border-color: var(--edge); color: var(--ink); }
+}
+
+/* The page's own footer -- just the version tag now that How to play lives
+   in the top bar. A thin, easy-to-miss-if-you-don't-care strip at the very
+   bottom of the page, matching OpenFrontIO's own footer holding the
+   version string, without the social/legal links this project has nothing
+   real to put there (no accounts, no official community presence). */
+.menu-footer {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-4) var(--space-4) var(--space-5);
 }
 
 .help-list { margin: var(--space-2) 0 var(--space-4); padding-left: 18px; font-size: 13px; color: var(--ink-dim); }
@@ -972,7 +1060,18 @@ input[type="range"]::-moz-range-thumb {
   .choice { padding: 13px 8px; }
   .field input[type="text"] { padding: 12px 13px; }
   .primary { padding: 15px; }
-  .secondary { padding: 13px; }
+
+  /* The landing page's own regions shrink their side padding, and the size
+     grid drops to one column -- three cards each carrying a scale
+     indicator, a label and a rival/tribe-count line need real width to
+     stay legible, which a phone doesn't have three-across. */
+  .menu-topbar { padding: var(--space-3) var(--space-4); }
+  .landing-body { padding: var(--space-5) var(--space-3); }
+  #startscreen .dialog { padding: var(--space-5) var(--space-4) var(--space-4); }
+  .size-grid { grid-template-columns: 1fr; }
+  .size-card { flex-direction: row; text-align: left; padding: var(--space-3); }
+  .size-card-body { align-items: flex-start; }
+  .size-scale { margin-bottom: 0; }
 }
 
 @media (max-width: 480px) {

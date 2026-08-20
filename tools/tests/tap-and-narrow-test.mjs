@@ -88,7 +88,14 @@ const browser = await chromium.launch({ headless: true });
   const cdp = await context.newCDPSession(page);
 
   const realTap = async (selector) => {
-    const box = await page.locator(selector).boundingBox();
+    const locator = page.locator(selector);
+    // The landing page is a real scrollable page now (see the OpenFront-
+    // style rebuild), not a single-screen dialog, so a target can genuinely
+    // sit below the fold -- scroll it into view first, same as a real
+    // finger would need to. Only the positioning is Playwright's; the tap
+    // itself below is still the raw CDP dispatch, not a synthetic click.
+    await locator.scrollIntoViewIfNeeded();
+    const box = await locator.boundingBox();
     const x = box.x + box.width / 2;
     const y = box.y + box.height / 2;
     // A genuine touch sequence through CDP's input pipeline -- this is what

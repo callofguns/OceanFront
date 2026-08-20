@@ -152,6 +152,15 @@ export class UI {
       this.settings.name = nameInput.value;
     });
 
+    // The hero identity block washes toward the picked colour -- the direct
+    // equivalent of OpenFrontIO's username input laid over the player's
+    // selected cosmetic pattern, done with a colour wash since OceanFront
+    // has no skins/patterns to render. Set once up front for the restored
+    // colour, then again on every pick below.
+    const heroIdentity = $('hero-identity');
+    const applyWash = (color) => { heroIdentity.style.setProperty('--wash', color); };
+    applyWash(this.settings.color);
+
     const colorPicker = $('color-picker');
     for (const color of PLAYER_COLORS.slice(0, 12)) {
       const dot = document.createElement('button');
@@ -163,26 +172,45 @@ export class UI {
         this.settings.color = color;
         for (const el of colorPicker.children) el.classList.remove('is-active');
         dot.classList.add('is-active');
+        applyWash(color);
       });
       colorPicker.appendChild(dot);
     }
 
+    // World size doubles as this menu's one big visual choice, the closest
+    // thing a single-player game has to OpenFrontIO's own lobby-card grid --
+    // so each option gets a small abstract scale indicator (filled squares,
+    // no image asset) alongside the label, rather than plain text alone.
     const sizePicker = $('size-picker');
-    for (const preset of Object.values(MAP_PRESETS)) {
+    Object.values(MAP_PRESETS).forEach((preset, index) => {
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'choice' + (preset.key === this.settings.preset ? ' is-active' : '');
-      btn.appendChild(document.createTextNode(preset.label));
+      btn.className = 'choice size-card' + (preset.key === this.settings.preset ? ' is-active' : '');
+
+      const scale = document.createElement('span');
+      scale.className = 'size-scale';
+      for (let i = 0; i < 3; i++) {
+        const seg = document.createElement('span');
+        seg.className = 'size-scale-seg' + (i <= index ? ' is-filled' : '');
+        scale.appendChild(seg);
+      }
+      btn.appendChild(scale);
+
+      const body = document.createElement('span');
+      body.className = 'size-card-body';
+      body.appendChild(document.createTextNode(preset.label));
       const small = document.createElement('small');
       small.textContent = `${preset.bots} rivals, ${preset.tribes} tribes`;
-      btn.appendChild(small);
+      body.appendChild(small);
+      btn.appendChild(body);
+
       btn.addEventListener('click', () => {
         this.settings.preset = preset.key;
         for (const el of sizePicker.children) el.classList.remove('is-active');
         btn.classList.add('is-active');
       });
       sizePicker.appendChild(btn);
-    }
+    });
 
     const difficultyPicker = $('difficulty-picker');
     for (const tier of Object.values(DIFFICULTIES)) {

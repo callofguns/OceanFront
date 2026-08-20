@@ -131,6 +131,24 @@ lose track of -- follow them until told otherwise:
   needs -- see the plan history for the full list of what was cut and why
   (accounts, store, teams, chat, graphics/sound settings, a radial context
   menu, none of which OceanFront has the underlying system for).
+- **The main menu is now a real landing page, not a floating dialog.**
+  `#startscreen` was rebuilt to match how OpenFrontIO's own landing page is
+  actually built (read off `PlayPage.ts`/`GameModeSelector.ts`/
+  `DesktopNavBar.ts`/`Footer.ts`): a slim top bar, a colour-washed hero
+  identity block, a big card grid for the one choice that deserves that
+  weight (world size, since a single-player game has no separate
+  lobby-browser step the way OpenFrontIO does), and a footer -- instead of
+  `.overlay`'s shared centered-card look. `#startscreen` overrides just
+  `.overlay`'s display/background/padding by ID, so `#endscreen` and the
+  popups keep the original centered-card treatment untouched. The page is
+  now genuinely taller than one phone screen by design, the same way
+  OpenFrontIO's own landing page requires scrolling to reach `SOLO` --
+  `tools/tests/tap-and-narrow-test.mjs`'s raw-CDP-touch `realTap()` helper
+  needed one line (`scrollIntoViewIfNeeded()`) added to keep working, since
+  unlike `page.click()`/`page.tap()`, a raw `Input.dispatchTouchEvent` does
+  not auto-scroll its target into view first. Worth remembering for any
+  future test that dispatches touch events directly against CDP rather
+  than through Playwright's own click/tap helpers.
 
 ## Architecture at a glance
 

@@ -2,9 +2,16 @@
 // main menu. CURRENT_VERSION drives the visible tag, bump it whenever a
 // new entry is added below. Newest first.
 
-export const CURRENT_VERSION = 'v2.3.0-beta';
+export const CURRENT_VERSION = 'v2.4.0-beta';
 
 export const CHANGELOG = [
+  {
+    version: 'v2.4.0-beta',
+    notes: [
+      'The main menu is now a real landing page instead of a small floating card, built to match how OpenFrontIO\'s own landing page is actually put together: a slim top bar, a hero block for your name and colour that washes toward whatever you pick, a big card for choosing your world size, and a footer.',
+      'World size is now its own set of cards with a quick visual size indicator, instead of a plain row of buttons.',
+    ],
+  },
   {
     version: 'v2.3.0-beta',
     notes: [
