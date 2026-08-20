@@ -650,41 +650,66 @@ input[type="range"]::-moz-range-thumb {
 
 /* A deliberately small, easy-to-miss-if-you-don't-care tag -- unlike "How to
    play" this isn't something a new player needs to notice, just something
-   that's there if they go looking for it. */
-.changelog {
-  margin-top: 10px;
-  text-align: center;
-  font-size: 10.5px;
-  color: var(--ink-faint);
-}
-.changelog summary {
-  cursor: pointer;
-  list-style: none;
-  display: inline-block;
+   that's there if they go looking for it. Opens .changelog-dialog below as a
+   popup on click, on both desktop and mobile -- not an inline expand. */
+.changelog-tag {
+  display: block;
+  margin: 10px auto 0;
   padding: 2px 9px;
   border-radius: 999px;
   border: 1px solid transparent;
+  background: none;
+  font: inherit;
+  font-size: 10.5px;
+  color: var(--ink-faint);
+  cursor: pointer;
 }
-.changelog summary::-webkit-details-marker { display: none; }
 @media (hover: hover) {
-  .changelog summary:hover { border-color: var(--edge); color: var(--ink-dim); }
+  .changelog-tag:hover { border-color: var(--edge); color: var(--ink-dim); }
 }
-.changelog .entries {
-  margin-top: 10px;
-  text-align: left;
-  font-size: 11px;
+
+/* The popup itself: same fixed, centered .overlay/.dialog pattern the start
+   and end screens use (see #startscreen/#endscreen), stacked on top of
+   whichever of those is open -- so it behaves identically on PC and phone
+   without a separate mobile code path. */
+#changelog-modal { z-index: 60; }
+.changelog-dialog {
+  position: relative;
+  max-height: min(80vh, 560px);
+  overflow-y: auto;
 }
-.changelog .entry-version {
-  margin: 10px 0 3px;
-  font-size: 9.5px;
+.changelog-dialog h1 { font-size: 19px; padding-right: 24px; }
+.modal-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid var(--edge);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--ink-dim);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .modal-close:hover { border-color: var(--edge-strong); color: var(--ink); }
+}
+
+.entries { font-size: 12px; }
+.entry-version {
+  margin: 14px 0 4px;
+  font-size: 10.5px;
   font-weight: 700;
   letter-spacing: 0.07em;
   text-transform: uppercase;
   color: var(--accent);
 }
-.changelog .entry-version:first-child { margin-top: 0; }
-.changelog ul { margin: 0 0 2px; padding-left: 15px; }
-.changelog li { margin-bottom: 3px; }
+.entry-version:first-child { margin-top: 0; }
+.entries ul { margin: 0 0 2px; padding-left: 16px; }
+.entries li { margin-bottom: 4px; }
 
 .endstats {
   display: grid;

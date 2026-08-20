@@ -180,7 +180,16 @@
       <p class="muted">Drag to pan · scroll or pinch to zoom · right-click to cancel a mode · space to pause</p>
     </details>
 
-    <details id="changelog" class="changelog"></details>
+    <button type="button" id="changelog-tag" class="changelog-tag"></button>
+  </div>
+</div>
+
+<!-- ======================== release history popup ======================= -->
+<div id="changelog-modal" class="overlay" hidden>
+  <div class="dialog changelog-dialog">
+    <button type="button" id="changelog-close" class="modal-close" aria-label="Close">✕</button>
+    <h1>Release history</h1>
+    <div id="changelog-entries" class="entries"></div>
   </div>
 </div>
 
