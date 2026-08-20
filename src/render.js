@@ -38,6 +38,12 @@ export class Renderer {
         br: r + (255 - r) * BORDER_LIGHTEN,
         bg: g + (255 - g) * BORDER_LIGHTEN,
         bb: b + (255 - b) * BORDER_LIGHTEN,
+        // Tribes render with no border stroke at all -- just the same
+        // translucent fill as their interior tiles, so their territory
+        // reads as a flat, borderless blob (matching OpenFrontIO's own
+        // bots, whose already-muted palette plus a uniform border formula
+        // makes their edges barely readable next to one another).
+        noBorder: p.isTribe,
       };
     }
     return table;
@@ -144,7 +150,7 @@ export class Renderer {
           owner[i - width] !== o || owner[i + width] !== o;
 
         const c = colors[o];
-        if (isBorder) {
+        if (isBorder && !c.noBorder) {
           px[p] = c.br;
           px[p + 1] = c.bg;
           px[p + 2] = c.bb;

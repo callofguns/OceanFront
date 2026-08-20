@@ -90,6 +90,25 @@ lose track of -- follow them until told otherwise:
   ever going untagged. So: get the version bump and changelog entry right
   before merging to `main`, and the release itself takes care of itself.
 - **Never open a pull request unless explicitly asked.**
+- **When the user references OpenFrontIO (by name, "open front", or similar),
+  go read its actual source on GitHub and copy the real code/mechanics --
+  don't paraphrase from memory or a summary.** `add_repo` (owner
+  `openfrontio`, repo `OpenFrontIO`) gives read access and a clone command
+  even though it isn't in this session's attached-repo list -- it's a public
+  repo the git proxy serves anonymously. Clone it shallow
+  (`GIT_LFS_SKIP_SMUDGE=1 git clone --depth 1 ...`) and grep/read it
+  directly rather than guessing file paths one `curl` at a time against
+  `raw.githubusercontent.com` -- much faster once cloned, and lets you
+  actually search (`grep -rl`) for the right file instead of probing paths
+  blind. This project's whole population/combat model (v2.0.0-beta) and the
+  Tribes archetype (v2.2.0-beta) were both built this way; the tribe
+  rendering pass (muted `botColors`-derived palette, no border stroke) came
+  from directly reading `src/client/theme/ThemeProvider.ts` and
+  `default-theme.json` this same way, not guessing. Always port the
+  mathematical/mechanical *shape*, then re-derive constants anchored to
+  OceanFront's own scale -- see the rescaling lesson below -- and never let
+  OpenFrontIO's own name appear in anything player-facing (`src/changelog.js`
+  entries, in-game text); it's fine in code comments and this file.
 
 ## Architecture at a glance
 

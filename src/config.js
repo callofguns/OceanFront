@@ -251,13 +251,17 @@ export const TRIBE_BOAT_MIN_TROOPS_FACTOR = 4;
 export const TRIBE_COUNTS = { small: 6, medium: 10, large: 16 };
 
 /** Muted palette, kept separate from PLAYER_COLORS so tribes read as
- *  background at a glance and never collide with a nation's colour. 16
- *  entries = the largest tribe count above, so no reuse within one match. */
+ *  background at a glance and never collide with a nation's colour. An
+ *  evenly-spread 16-entry sample of OpenFrontIO's own bot color pool (its
+ *  default-theme.json's `botColors`, 49 entries, all low-saturation
+ *  olive/slate/dusty-rose tones -- picked over inventing a new palette so
+ *  tribes read exactly as muted as the archetype they're ported from) --
+ *  16 entries = the largest tribe count above, so no reuse within one match. */
 export const TRIBE_COLORS = [
-  '#a3705f', '#6f8fa3', '#7f9c6d', '#a99154',
-  '#8b7ba6', '#a86f86', '#5f9b93', '#9c8b6a',
-  '#7d8aa0', '#8fa05f', '#b0846a', '#6b95a8',
-  '#a37f9c', '#84a58e', '#9d7a6a', '#75879b',
+  '#96a08c', '#aaaa78', '#96aa96', '#788c78',
+  '#82a096', '#8296aa', '#8ca0aa', '#78828c',
+  '#968296', '#aa96aa', '#aa788c', '#b48c8c',
+  '#be8c78', '#aa9682', '#a08c96', '#b4a0a0',
 ];
 
 // ---------------------------------------------------------------- economy ---

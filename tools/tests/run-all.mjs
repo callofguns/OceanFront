@@ -31,6 +31,7 @@ const BROWSER_TESTS = [
   'difficulty-ui-verify.mjs',
   'pop-bar-test.mjs',
   'keyboard-pan-test.mjs',
+  'tribe-render-test.mjs',
 ];
 
 function run(script, env = {}) {
