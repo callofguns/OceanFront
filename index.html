@@ -170,50 +170,54 @@
 </div>
 
 <!-- ============================ start screen ============================ -->
-<div id="startscreen" class="overlay">
-  <div class="dialog">
-    <h1>🌊 OceanFront</h1>
-    <p class="tagline">
-      Claim a coastline. Expand tile by tile. Put your people to work, and turn
-      their gold into cities, fleets and warheads.
-    </p>
+<div id="startscreen" class="overlay landing">
+  <header class="menu-topbar">
+    <div class="brand">🌊 <span>OceanFront</span></div>
+    <button type="button" id="help-tag" class="link-btn">How to play</button>
+  </header>
 
-    <div class="menu-section">
-      <div class="menu-section-title">Nation</div>
-      <div class="field">
-        <label for="name-input">Name</label>
-        <input id="name-input" type="text" maxlength="16" value="Player" autocomplete="off">
-      </div>
-      <div class="field">
-        <label>Colour</label>
-        <div id="color-picker"></div>
-      </div>
-    </div>
+  <div class="landing-body">
+    <div class="dialog">
+      <p class="tagline">
+        Claim a coastline. Expand tile by tile. Put your people to work, and turn
+        their gold into cities, fleets and warheads.
+      </p>
 
-    <div class="menu-section">
-      <div class="menu-section-title">World</div>
-      <div class="field">
-        <label>Size</label>
-        <div id="size-picker" class="choice-row"></div>
+      <div id="hero-identity" class="hero-identity">
+        <div class="field">
+          <label for="name-input">Name</label>
+          <input id="name-input" type="text" maxlength="16" value="Player" autocomplete="off">
+        </div>
+        <div class="field">
+          <label>Colour</label>
+          <div id="color-picker"></div>
+        </div>
       </div>
-      <div class="field">
-        <label>Opponents</label>
-        <div id="difficulty-picker" class="choice-row"></div>
-      </div>
-      <div class="field">
-        <label for="seed-input">Seed <span class="muted">(same seed, same world)</span></label>
-        <input id="seed-input" type="text" maxlength="12" autocomplete="off">
-      </div>
-    </div>
 
-    <div class="menu-footer">
+      <div class="menu-section">
+        <div class="menu-section-title">World</div>
+        <div id="size-picker" class="size-grid"></div>
+      </div>
+
+      <div class="menu-section">
+        <div class="menu-section-title">Match</div>
+        <div class="field">
+          <label>Opponents</label>
+          <div id="difficulty-picker" class="choice-row"></div>
+        </div>
+        <div class="field">
+          <label for="seed-input">Seed <span class="muted">(same seed, same world)</span></label>
+          <input id="seed-input" type="text" maxlength="12" autocomplete="off">
+        </div>
+      </div>
+
       <button id="btn-start" class="primary">Set sail</button>
-      <div class="menu-footer-links">
-        <button type="button" id="help-tag" class="link-btn">How to play</button>
-        <button type="button" id="changelog-tag" class="changelog-tag"></button>
-      </div>
     </div>
   </div>
+
+  <footer class="menu-footer">
+    <button type="button" id="changelog-tag" class="changelog-tag"></button>
+  </footer>
 </div>
 
 <!-- ============================= help popup ============================= -->
