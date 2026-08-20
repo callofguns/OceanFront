@@ -1,0 +1,74 @@
+name: Release on main
+
+# Every push to main is either a merge from Update-Testing (this project's
+# normal release flow -- see HANDOFF.md's "Standing workflow rules") or a
+# direct doc/workflow commit. This job tags and publishes a GitHub release
+# automatically whenever src/changelog.js's CURRENT_VERSION isn't tagged
+# yet, using that version's CHANGELOG entry as the release notes. It's a
+# clean no-op on any push where CURRENT_VERSION was already released --
+# most pushes to main won't bump it, and that's expected, not an error.
+#
+# CURRENT_VERSION is the single source of truth for the version tag, not an
+# auto-incremented counter -- see .github/scripts/release-info.mjs for why.
+#
+# This replaces manually tagging releases. A Claude Code session working in
+# this repo runs behind a git proxy that gets an HTTP 403 pushing tags
+# directly (confirmed, not an egress issue -- branch pushes over the same
+# connection succeed), but Actions' own GITHUB_TOKEN, running server-side on
+# GitHub's infrastructure, isn't subject to that block.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out full history and tags
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Read the current version + notes from src/changelog.js
+        run: node .github/scripts/release-info.mjs
+
+      - name: Check whether this version is already tagged
+        id: check
+        run: |
+          VERSION=$(cat RELEASE_VERSION)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create the GitHub release
+        if: steps.check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ steps.check.outputs.version }}"
+          FLAGS=()
+          # Mark anything still tagged "-beta" as a prerelease on GitHub too.
+          if [[ "$VERSION" == *[Bb]eta* ]]; then
+            FLAGS+=(--prerelease)
+          fi
+          gh release create "$VERSION" \
+            --title "$VERSION" \
+            --notes-file RELEASE_NOTES.md \
+            --target "${{ github.sha }}" \
+            "${FLAGS[@]}"
+
+      - name: Skip (already released)
+        if: steps.check.outputs.exists == 'true'
+        run: echo "${{ steps.check.outputs.version }} is already tagged -- nothing to do."
