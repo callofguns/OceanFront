@@ -777,6 +777,18 @@ input[type="range"]::-moz-range-thumb {
   #sheet-backdrop { display: block; }
   #hud.has-open-sheet #sheet-backdrop { opacity: 1; pointer-events: auto; }
 
+  /* .overlay centers its .dialog with align-items: center, which is fine
+     until the dialog is taller than the viewport (a phone showing the full
+     main menu form, with the browser chrome eating real height). A
+     centered flex item that overflows its scrollable container clips at
+     the top and that clipped part can't be reached by scrolling, in every
+     major mobile browser. Top-align on small viewports instead: content
+     just flows down from the top and overflow-y: auto on .overlay can
+     reach every bit of it, at the cost of losing perfect vertical
+     centering on a phone, which is not something you can see anyway once
+     the form doesn't fit in one screen. */
+  .overlay { align-items: flex-start; }
+
   /* The topbar shrinks to fit small screens; troops, the army bar, gold and
      territory are what you actually watch. #topbar's children are .brand,
      then the four .stat blocks in DOM order (Troops, Army, Gold, Territory),
