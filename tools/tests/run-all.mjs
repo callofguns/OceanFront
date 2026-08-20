@@ -32,6 +32,7 @@ const BROWSER_TESTS = [
   'pop-bar-test.mjs',
   'keyboard-pan-test.mjs',
   'tribe-render-test.mjs',
+  'pause-menu-test.mjs',
 ];
 
 function run(script, env = {}) {

@@ -8,6 +8,12 @@ import { OCEAN, BUILDINGS, NUKE_RADIUS } from './config.js';
 
 const FILL_ALPHA = 0.66;
 const BORDER_LIGHTEN = 0.55;
+// Matches styles.css's system font stack -- real San Francisco on macOS/iOS,
+// that platform's own equivalent everywhere else, so map labels read as the
+// same typeface as the surrounding DOM instead of a stray "Inter" that was
+// never actually loaded (no @font-face, no link tag -- it silently fell
+// through to this exact stack already).
+const LABEL_FONT = '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif';
 
 export class Renderer {
   constructor(canvas, game) {
@@ -176,7 +182,7 @@ export class Renderer {
       this.needsLayer = false;
     }
 
-    ctx.fillStyle = '#050d16';
+    ctx.fillStyle = '#08090b'; // matches styles.css's --bg
     ctx.fillRect(0, 0, this.viewW, this.viewH);
 
     const c = this.camera;
@@ -387,7 +393,7 @@ export class Renderer {
       // labels are real rivals.
       const weight = p.isTribe ? 500 : 600;
       const labelSize = p.isTribe ? size * 0.85 : size;
-      ctx.font = `${weight} ${labelSize}px "Inter", system-ui, sans-serif`;
+      ctx.font = `${weight} ${labelSize}px ${LABEL_FONT}`;
       ctx.lineWidth = Math.max(2, labelSize / 6);
       ctx.strokeStyle = 'rgba(0,0,0,0.75)';
       ctx.fillStyle = p.isTribe ? 'rgba(255,255,255,0.78)' : '#ffffff';
@@ -396,7 +402,7 @@ export class Renderer {
       ctx.strokeText(label, s.x, s.y - size * 0.55);
       ctx.fillText(label, s.x, s.y - size * 0.55);
 
-      ctx.font = `500 ${size * 0.82}px "Inter", system-ui, sans-serif`;
+      ctx.font = `500 ${size * 0.82}px ${LABEL_FONT}`;
       const troops = formatShort(p.troops);
       ctx.strokeText(troops, s.x, s.y + size * 0.55);
       ctx.fillText(troops, s.x, s.y + size * 0.55);

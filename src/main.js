@@ -45,6 +45,18 @@ ui.onSpeed = (value) => {
   speed = value;
 };
 
+// "New game" from the in-match pause menu: stop the live match cleanly so
+// the frame loop's own game/renderer references go away, rather than
+// leaving the old match ticking invisibly behind the main menu (the loop
+// below only checks these closure vars, not anything on ui).
+ui.onExit = () => {
+  game = null;
+  renderer = null;
+  accumulator = 0;
+  endShown = false;
+  speed = 1;
+};
+
 window.addEventListener('resize', () => {
   if (renderer) renderer.resize();
 });

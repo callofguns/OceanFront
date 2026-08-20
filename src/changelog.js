@@ -2,9 +2,18 @@
 // main menu. CURRENT_VERSION drives the visible tag, bump it whenever a
 // new entry is added below. Newest first.
 
-export const CURRENT_VERSION = 'v2.2.0-beta';
+export const CURRENT_VERSION = 'v2.3.0-beta';
 
 export const CHANGELOG = [
+  {
+    version: 'v2.3.0-beta',
+    notes: [
+      'A full visual redesign. Monochrome surfaces throughout, with color kept only where it means something: gold for currency, red for danger and attacking troops, blue for selection and the primary action. Rounder, more consistent corners and real breathing room between elements. The system font is used everywhere, so the game renders in actual San Francisco on a Mac or iPhone rather than a generic fallback.',
+      'The main menu is now grouped into clear sections (Nation, World) instead of one long list of fields.',
+      '"How to play" is now a proper popup, reachable from the main menu and, for the first time, mid-match too, instead of an inline expand you could only see before starting.',
+      'New: an in-match menu, opened from a gear button in the topbar. It pauses the game while open (without undoing a pause you set yourself), and offers How to Play, Restart Match with the same seed, and New Game to return to the main menu without a page refresh.',
+    ],
+  },
   {
     version: 'v2.2.0-beta',
     notes: [

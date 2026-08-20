@@ -33,6 +33,18 @@ export class UI {
     /** Set by main.js. */
     this.onStart = null;
     this.onSpeed = null;
+    this.onExit = null;
+
+    /** The exact options last passed to onStart -- so Restart Match (from
+     *  the pause menu) can replay the same seed/settings instead of
+     *  re-reading form fields that may have changed since (the seed input
+     *  in particular gets re-randomized after Play Again). */
+    this._lastStartOptions = null;
+    /** Speed button active when the pause menu was opened, so Resume can
+     *  restore it -- unless the player had already paused manually first,
+     *  in which case Resume leaves it paused rather than un-pausing a state
+     *  the player chose themselves. */
+    this._speedBeforePause = null;
 
     this.state = { hoverTile: -1, buildMode: null, nukeMode: false };
 
@@ -70,6 +82,8 @@ export class UI {
     this.#restoreSettings();
     this.#buildStartScreen();
     this.#buildChangelog();
+    this.#buildHelpModal();
+    this.#buildPauseMenu();
     this.#bindGlobalInput();
     this.#bindMobileChrome();
     this.#bindInstallPrompt();
@@ -194,19 +208,104 @@ export class UI {
       const name = (nameInput.value || 'Player').trim().slice(0, 16) || 'Player';
       this.settings.name = name;
       this.#saveSettings();
-      this.onStart?.({
+      const options = {
         preset: MAP_PRESETS[this.settings.preset],
         seed: hashSeed(seedInput.value),
         playerName: name,
         playerColor: this.settings.color,
         difficulty: this.settings.difficulty,
-      });
+      };
+      this._lastStartOptions = options;
+      this.onStart?.(options);
     });
 
     $('btn-again').addEventListener('click', () => {
       $('endscreen').hidden = true;
-      $('startscreen').hidden = false;
+      this.#returnToMenu();
       seedInput.value = String(Math.floor(Math.random() * 1_000_000));
+    });
+  }
+
+  /** Shared by "Play again" (from the end screen) and "New game" (from the
+   *  in-match pause menu) -- both mean "stop whatever match exists and show
+   *  the start screen again". Only the pause menu needs onExit, since a
+   *  match reaching the end screen has already run its course on its own;
+   *  calling it there too would be a harmless no-op (main.js's game/renderer
+   *  are still valid until a new one replaces them via onStart). */
+  #returnToMenu() {
+    this.onExit?.();
+    // main.js resets its own speed variable to 1x on the next onStart, but
+    // never touches the speed buttons themselves -- do it here so a match
+    // left running at 2x/3x doesn't visually carry that into the next one.
+    for (const b of document.querySelectorAll('.speed-btn')) b.classList.remove('is-active');
+    document.querySelector('.speed-btn[data-speed="1"]')?.classList.add('is-active');
+    $('hud').hidden = true;
+    $('startscreen').hidden = false;
+  }
+
+  /** Promoted from an inline <details> to a real popup, same pattern as
+   *  #buildChangelog -- reachable from the main menu and from the in-match
+   *  pause menu, so (unlike before) it's available mid-match too. */
+  #buildHelpModal() {
+    const modal = $('help-modal');
+    const close = () => { modal.hidden = true; };
+    $('help-tag').addEventListener('click', () => { modal.hidden = false; });
+    $('help-close').addEventListener('click', close);
+    modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !modal.hidden) close();
+    });
+  }
+
+  /** In-match menu, reached from the topbar's gear button. Opening it pauses
+   *  the simulation via the existing speed-button mechanism, remembering
+   *  whichever speed was active so Resume can restore it -- unless the
+   *  player had already paused manually before opening the menu, in which
+   *  case Resume leaves it paused rather than un-pausing a state they chose
+   *  themselves. This mirrors OpenFrontIO's own pauseGame()/
+   *  wasPausedWhenOpened behaviour, not just its look. */
+  #buildPauseMenu() {
+    const modal = $('pausemenu');
+
+    const open = () => {
+      if (!this.game || this.game.state === 'over') return;
+      const active = document.querySelector('.speed-btn.is-active');
+      this._speedBeforePause = active?.dataset.speed ?? '1';
+      if (this._speedBeforePause !== '0') document.querySelector('.speed-btn[data-speed="0"]')?.click();
+      modal.hidden = false;
+    };
+    const close = () => {
+      modal.hidden = true;
+      if (this._speedBeforePause && this._speedBeforePause !== '0') {
+        document.querySelector(`.speed-btn[data-speed="${this._speedBeforePause}"]`)?.click();
+      }
+      this._speedBeforePause = null;
+    };
+
+    $('btn-pause-menu').addEventListener('click', open);
+    $('pause-close').addEventListener('click', close);
+    $('pause-resume').addEventListener('click', close);
+    modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !modal.hidden) close();
+    });
+
+    $('pause-help').addEventListener('click', () => { $('help-modal').hidden = false; });
+
+    // Restart and Exit both replace or tear down the match outright, so
+    // there is no prior speed worth restoring -- main.js's onStart sets its
+    // own speed back to 1x regardless, and #returnToMenu resets the speed
+    // buttons to match. Clear the remembered speed rather than restoring it
+    // through close(), which would just be immediately overwritten.
+    $('pause-restart').addEventListener('click', () => {
+      modal.hidden = true;
+      this._speedBeforePause = null;
+      if (this._lastStartOptions) this.onStart?.(this._lastStartOptions);
+    });
+    $('pause-exit').addEventListener('click', () => {
+      modal.hidden = true;
+      this._speedBeforePause = null;
+      this.#returnToMenu();
     });
   }
 
@@ -271,6 +370,11 @@ export class UI {
     $('hud').classList.add('is-spawning');
     $('spawnbanner').hidden = false;
     $('endscreen').hidden = true;
+    // Both actions that reach onStart mid-match (Restart Match) already hide
+    // this and clear the tracked speed themselves, but a fresh attach() is a
+    // reasonable place to guarantee it regardless of how it was reached.
+    $('pausemenu').hidden = true;
+    this._speedBeforePause = null;
 
     this.#buildBuildMenu();
     this.#syncSliders();

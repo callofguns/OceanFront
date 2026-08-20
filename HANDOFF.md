@@ -20,11 +20,11 @@ On `main` (or `Update-Testing`, staged for a later merge -- check which with
 `git log`). Latest version tag in-game is whatever `CURRENT_VERSION` says in
 `src/changelog.js` -- check there and with `git log -1` for the exact commit,
 rather than trusting a hash written here, since both move. As of this
-hand-off that's **v2.0.0-beta**, the round that ported OpenFrontIO's exact
-population/combat model wholesale (see the load-bearing lessons below);
-whether any recent version has been cut as a GitHub release is worth asking
-the user rather than assuming (see below -- this session can't push tags
-itself, so there's no way to check from git alone).
+hand-off that's **v2.3.0-beta**, the Apple-style visual redesign plus the
+new in-match pause menu (see the load-bearing lessons below); whether any
+recent version has been cut as a GitHub release is worth asking the user
+rather than assuming (see below -- this session can't push tags itself, so
+there's no way to check from git alone).
 
 ## Standing workflow rules
 
@@ -118,15 +118,18 @@ lose track of -- follow them until told otherwise:
   elsewhere) except where a file was already being touched for another
   reason. Fix them opportunistically when you're in a file anyway, not as a
   standalone sweep unless asked.
-- **A UI overhaul is planned for a future update, not yet started.** Apple-
-  style: minimal, clean, premium. Monochrome base palette with color used
-  sparingly, for buttons and highlighted stats, not throughout. San
-  Francisco for the font (with a sane fallback stack for non-Apple
-  platforms, since this game runs everywhere). Real attention to spacing
-  and how screen space is used, especially on mobile. Also referenced
-  against OpenFrontIO's own UI (see the bullet above for how to research
-  that when the round actually starts). Nothing has been built toward this
-  yet, it's recorded here so it isn't lost before that round begins.
+- **The Apple-style UI overhaul (v2.3.0-beta) is done.** Monochrome base
+  palette (`styles.css`'s `--bg`/`--panel`/`--edge`/`--ink*` tokens, all
+  true neutral grey now, not blue-tinted), color kept only where it's
+  semantic (`--accent`/`--gold`/`--danger`/`--good`), the system font stack
+  for real San Francisco on Apple devices, a real spacing scale
+  (`--space-1` through `--space-6`), and a role-based radius scale
+  (`--radius-lg`/`--radius`/`--radius-sm`). Researched against OpenFrontIO's
+  actual design system and menu inventory (see the bullet above), then
+  deliberately scoped down to what a single-player-vs-AI game actually
+  needs -- see the plan history for the full list of what was cut and why
+  (accounts, store, teams, chat, graphics/sound settings, a radial context
+  menu, none of which OceanFront has the underlying system for).
 
 ## Architecture at a glance
 
@@ -278,6 +281,52 @@ rediscover them a second time.
   Worth checking again if `.overlay`/`.dialog` content grows taller, or if
   the same `align-items: center` + `overflow: auto` shape gets reused
   anywhere else.
+- **A visual restyle should never need to touch an id or class the test
+  suite reads.** Before the v2.3.0-beta redesign, every `.mjs` file in
+  `tools/tests/` was grepped for `getElementById`/`querySelector` to build
+  an explicit list of load-bearing selectors (`#pop-bar-troops`, `.lb-row`,
+  `.speed-btn[data-speed]`, the `:nth-child` ordering on the pickers, and
+  around thirty more). The whole redesign -- new tokens, new radius/spacing
+  scale, two new modals, a restructured main menu -- landed with every one
+  of those unchanged, and the entire existing suite passed without a single
+  test edit. That's the actual point of keeping presentation (CSS custom
+  properties, radius/spacing values) and structure (ids, classes, DOM
+  shape) as separate concerns: a future restyle should be able to do the
+  same, and a future *structural* change should budget for updating the
+  tests deliberately rather than discovering it broke them by accident.
+- **A HUD element that changes width needs its overflow budget re-measured,
+  not estimated.** Adding the pause-menu gear button to `#topbar` pushed
+  its `scrollWidth` from 365px to 381px at the 375px viewport
+  `tap-and-narrow-test.mjs`/`pop-bar-test.mjs` both assert against --
+  looked like plenty of headroom until it wasn't. Reproduced with a small
+  throwaway script reading `#topbar`'s real `scrollWidth` rather than
+  guessing pixel budgets by eye, which is also how the fix (shrinking the
+  new button and a couple of existing ones specifically at the narrowest
+  breakpoint) was verified. The same applies in the other direction: adding
+  height to `.dialog` (the main menu grew a `.menu-section-title` per group
+  plus a footer) pushed `#btn-start` low enough to clip below a real
+  390x844 phone's fold, caught by `document.elementFromPoint()` returning
+  `null` at the button's own tap coordinates in a debug script, not by
+  reasoning about it. Any change to a HUD element's size or a dialog's
+  height belongs in one of these two same measurement scripts before
+  trusting it fits.
+- **`ui.onStart`/`ui.onSpeed`/`ui.onExit` -- main.js owns the match
+  lifecycle, `UI` only ever asks for it through a callback.** `UI` has no
+  reference to `main.js`'s `game`/`renderer` closure variables, by design
+  (`src/game.js` and `src/render.js` know nothing about the DOM, and
+  `src/ui.js` isn't supposed to reach into `main.js`'s internals either).
+  Before `onExit` existed, there was no way to stop a live match from
+  inside `UI` at all -- the pause menu's "New Game" needed one so `main.js`
+  can null its own `game`/`renderer` and reset `accumulator`/`speed`/
+  `endShown`, otherwise the old match would keep ticking invisibly behind
+  the main menu (the frame loop only checks its own closure vars). Restart
+  Match didn't need a new callback at all -- it just calls `onStart` again
+  with the exact options `UI` already snapshotted from the first call
+  (`this._lastStartOptions`), reusing the one path `main.js` already had
+  for starting a match rather than inventing a second one. Any future UI
+  action that needs to affect the match lifecycle should look for a fit in
+  `onStart`/`onSpeed`/`onExit` first, and only add a new callback if none of
+  them actually cover it.
 
 ## How to verify a change
 
@@ -327,3 +376,14 @@ Full details, including what each test actually checks, are in
   count, since a tribe's think cadence is far lazier than a nation's) but
   not yet played by a human. If a match feels too crowded or too empty
   early on, `MAP_PRESETS.*.tribes` is the first thing to adjust.
+- **The v2.3.0-beta visual redesign and pause menu are verified by the
+  automated suite and a manual desktop/375px pass, not yet by a human
+  playing a real match on a real phone.** The design tokens (`styles.css`'s
+  `:root` block) are a first pass at the Apple/OpenFrontIO-informed look
+  the user asked for, not a finished visual language -- if a specific
+  color, radius, or spacing value reads wrong once played, it's a single
+  custom-property edit, not a structural change. The pause menu itself
+  (Resume/How to Play/Restart Match/New Game) is new surface area with no
+  prior version to compare against; watch for edge cases around opening it
+  during spawn selection or right as a match ends, which the automated
+  suite covers but a human hasn't stress-tested yet.
