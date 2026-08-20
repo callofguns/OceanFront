@@ -7,7 +7,7 @@
 // ones from storage -- it is not required for routine updates to propagate,
 // since those are picked up on the very next fetch regardless.
 
-const CACHE_VERSION = 'v3';
+const CACHE_VERSION = 'v4';
 const CACHE_NAME = `oceanfront-${CACHE_VERSION}`;
 
 const PRECACHE = [
