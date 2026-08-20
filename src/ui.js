@@ -160,7 +160,7 @@ export class UI {
       btn.className = 'choice' + (preset.key === this.settings.preset ? ' is-active' : '');
       btn.appendChild(document.createTextNode(preset.label));
       const small = document.createElement('small');
-      small.textContent = `${preset.bots} rivals`;
+      small.textContent = `${preset.bots} rivals, ${preset.tribes} tribes`;
       btn.appendChild(small);
       btn.addEventListener('click', () => {
         this.settings.preset = preset.key;
@@ -177,7 +177,7 @@ export class UI {
       btn.className = 'choice' + (tier.key === this.settings.difficulty ? ' is-active' : '');
       btn.appendChild(document.createTextNode(tier.label));
       const small = document.createElement('small');
-      small.textContent = tier.key === 'normal' ? 'default' : `${tier.economy}× economy`;
+      small.textContent = tier.key === 'normal' ? 'default' : `${tier.goldMultiplier}× economy`;
       btn.appendChild(small);
       btn.addEventListener('click', () => {
         this.settings.difficulty = tier.key;
@@ -904,6 +904,7 @@ export class UI {
     const { li, swatch, name, share, tag, btn } = row;
 
     li.classList.toggle('is-you', p.isHuman);
+    li.classList.toggle('is-tribe', p.isTribe);
     if (swatch.style.background !== p.color) swatch.style.background = p.color;
     if (name.textContent !== p.name) name.textContent = p.name;
 

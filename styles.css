@@ -316,6 +316,11 @@ html, body {
   border-radius: 6px;
 }
 .lb-row.is-you { background: rgba(79, 195, 247, 0.12); }
+/* Tribes read as background, at a glance: dimmer and italic. Deliberately
+   styles only the flex:1 name -- the swatch, share, tag and button columns
+   keep their exact widths, so a row can never reflow under a finger (see
+   the DOM-churn tap-loss lesson in HANDOFF.md). */
+.lb-row.is-tribe .lb-name { font-style: italic; color: var(--ink-dim); }
 .lb-swatch { width: 10px; height: 10px; border-radius: 2px; flex: none; }
 .lb-name {
   flex: 1;

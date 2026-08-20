@@ -40,6 +40,10 @@ function runOne(sizeKey, seed, difficulty) {
   }
   const claimed = game.players.reduce((s, p) => s + p.tiles.size, 0) / game.map.landCount;
 
+  const tribes = game.players.filter((p) => p.isTribe);
+  const tribesSpawned = tribes.filter((t) => t.peakTiles > 0).length;
+  const tribeLand = tribes.reduce((s, t) => s + t.tiles.size, 0) / game.map.landCount;
+
   return {
     minutes: ticks / TICKS_PER_SECOND / 60,
     finished: game.state === 'over',
@@ -49,6 +53,10 @@ function runOne(sizeKey, seed, difficulty) {
     claimed,
     avgTick: total / ticks,
     worstTick: worst,
+    tribeCount: tribes.length,
+    tribesSpawned,
+    tribesAlive: tribes.filter((t) => t.alive).length,
+    tribeLand,
   };
 }
 
@@ -67,7 +75,10 @@ for (const sizeKey of ['small', 'medium', 'large']) {
       `structures ${avg((r) => r.structures).toFixed(0).padStart(4)}  ` +
       `gold ${avg((r) => r.gold).toFixed(0).padStart(7)}  ` +
       `land ${(avg((r) => r.claimed) * 100).toFixed(1)}%  ` +
-      `tick ${avg((r) => r.avgTick).toFixed(3)}/${Math.max(...rows.map((r) => r.worstTick)).toFixed(1)}ms`
+      `tick ${avg((r) => r.avgTick).toFixed(3)}/${Math.max(...rows.map((r) => r.worstTick)).toFixed(1)}ms  ` +
+      `spawned ${avg((r) => r.tribesSpawned).toFixed(1)}/${rows[0].tribeCount}  ` +
+      `tribesAlive ${avg((r) => r.tribesAlive).toFixed(1).padStart(4)}  ` +
+      `tribeLand ${(avg((r) => r.tribeLand) * 100).toFixed(1)}%`
     );
   }
 }

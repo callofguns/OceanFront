@@ -95,12 +95,21 @@ async function startMatch(page, { difficulty, seed } = {}) {
     const info = await page.evaluate(() => {
       const g = window.OceanFront?.game;
       if (!g) return null;
-      const bots = g.players.filter((p) => p.ai && p !== g.human);
+      // Nations only -- tribes also carry `.ai` but are deliberately flat
+      // across every difficulty (see the tribes block in src/config.js), so
+      // folding them into these tier-monotonicity averages would dilute or
+      // outright break them. See the tribeCap/tribeGold check below for
+      // their own, opposite assertion.
+      const bots = g.players.filter((p) => p.ai && !p.isTribe && p !== g.human);
       const avgAggr = bots.reduce((s, b) => s + b.ai.aggression, 0) / bots.length;
       const avgGold = bots.reduce((s, b) => s + b.goldMultiplier, 0) / bots.length;
       const avgCap = bots.reduce((s, b) => s + b.troopsCapMultiplier, 0) / bots.length;
       const avgGrowth = bots.reduce((s, b) => s + b.troopsMultiplier, 0) / bots.length;
-      return { difficulty: g.difficulty, avgAggr, avgGold, avgCap, avgGrowth, botCount: bots.length };
+      const tribes = g.players.filter((p) => p.isTribe);
+      return {
+        difficulty: g.difficulty, avgAggr, avgGold, avgCap, avgGrowth, botCount: bots.length,
+        tribeCount: tribes.length, tribeCap: tribes[0]?.troopsCapMultiplier, tribeGold: tribes[0]?.goldMultiplier,
+      };
     });
     results[diff] = info;
     await page.close();
@@ -122,6 +131,15 @@ async function startMatch(page, { difficulty, seed } = {}) {
   check(
     'avg bot troopsMultiplier (growth rate) strictly increases easy < normal < hard',
     results.easy?.avgGrowth < results.normal?.avgGrowth && results.normal?.avgGrowth < results.hard?.avgGrowth
+  );
+  check(
+    'tribe troop-cap and gold multipliers are identical across all three difficulties',
+    results.easy?.tribeCap === results.normal?.tribeCap && results.normal?.tribeCap === results.hard?.tribeCap &&
+    results.easy?.tribeGold === results.normal?.tribeGold && results.normal?.tribeGold === results.hard?.tribeGold
+  );
+  check(
+    'tribe troop-cap multiplier is weaker than even Easy nations’',
+    results.easy?.tribeCap < results.easy?.avgCap
   );
 }
 

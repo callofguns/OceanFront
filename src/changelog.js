@@ -2,9 +2,16 @@
 // main menu. CURRENT_VERSION drives the visible tag -- bump it whenever a
 // new entry is added below. Newest first.
 
-export const CURRENT_VERSION = 'v2.1.0-beta';
+export const CURRENT_VERSION = 'v2.2.0-beta';
 
 export const CHANGELOG = [
+  {
+    version: 'v2.2.0-beta',
+    notes: [
+      'Tribes: small, lazy AI bands now fill out the map alongside the full nations, grabbing open land early so there\'s less of a free-for-all land grab in the opening minutes. They sign any pact offered to them but never propose one, tear down anything they capture instead of building it up, and pick fights without much regard for how strong the other side is -- easy pickings if you find one, but numerous enough to matter. They\'re never affected by the difficulty setting; only the full nations get tougher on Hard.',
+      'The leaderboard and map now show tribes in a dimmer, italic style so it\'s easy to tell them apart from real rivals at a glance.',
+    ],
+  },
   {
     version: 'v2.1.0-beta',
     notes: [

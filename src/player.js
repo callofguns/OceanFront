@@ -22,6 +22,11 @@ export class Player {
     this.name = name;
     this.color = color;
     this.isHuman = isHuman;
+    /** Set for the lightweight "tribe" archetype (see src/tribe.js): a
+     *  small, lazy filler AI that occupies open land early and never
+     *  snowballs. `isHuman` / `isTribe` / `ai` are the only three
+     *  discriminators a Player has -- a full nation is `ai && !isTribe`. */
+    this.isTribe = false;
     this.alive = true;
 
     this.tiles = new Set();
