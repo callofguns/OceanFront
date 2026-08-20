@@ -31,34 +31,56 @@ itself, so there's no way to check from git alone).
 These came from explicit instructions earlier in the project and are easy to
 lose track of -- follow them until told otherwise:
 
-- **A new branch off `main` for every update, auto-merged into
-  `Update-Testing`, merged into `main` only on explicit go-ahead.** This
+- **A feature branch off `Update-Testing` for every update, merged back into
+  `Update-Testing` as soon as it works, merged into `main` only on explicit
+  go-ahead once a batch of updates has been played together there.** This
   workflow has moved around: distinct per-feature branches early on
   (`claude/mobile-pwa-...`, `claude/tap-reliability-fixes-...`), then a
   single reused `test` branch, then a stretch of pushing straight to `main`,
-  then a plain branch-per-update rule. It now has three tiers:
-  1. For each new piece of work, branch off `main`'s *current* state (not
-     off `Update-Testing`) -- `git fetch origin main && git checkout -B
-     claude/<slug> origin/main`. Do the work, verify it, commit, push the
-     branch.
-  2. **Automatically, without waiting for the user:** fetch and check out
-     `Update-Testing`, merge the finished branch into it, resolve any
-     conflicts (branches all forking from `main` independently means later
-     merges can collide with earlier ones -- regenerate rather than
+  then a branch-per-update rule forking from `main` itself. Current shape,
+  laid out explicitly by the user as a "GitHub production line":
+  1. For each new piece of work, branch off `Update-Testing`'s *current*
+     state (not `main`) -- `git fetch origin Update-Testing && git checkout
+     -B feature/<slug> origin/Update-Testing` for a new feature, or
+     `bugfix/<slug>` for a fix, named clearly (`feature/player-movement`,
+     `bugfix/jump-glitch`). Do the work, verify it (`npm test`, plus
+     whatever targeted checks the change calls for), and commit with clear,
+     actionable messages -- never "fixed stuff"/"update", say what changed
+     ("Add double jump mechanic", "Fix audio bug on start screen") -- with
+     each commit kept focused on one specific thing rather than bundling
+     unrelated changes together. Push the branch.
+  2. **Automatically, without waiting for the user, as soon as the branch
+     works:** fetch and check out `Update-Testing`, merge the finished
+     branch into it, resolve any conflicts (regenerate rather than
      hand-merge any generated files, same as this project's general
-     merge-conflict practice), and push `Update-Testing`.
+     merge-conflict practice), and push `Update-Testing`. Do this promptly
+     per update rather than batching several branches unmerged -- the point
+     is for `Update-Testing` itself to accumulate a few played-together
+     updates, not for branches to pile up unmerged.
   3. Leave `main` untouched until the user explicitly says to merge (e.g.
-     "push to main") -- only then merge `Update-Testing` into `main` and
+     "push to main"). That go-ahead means `Update-Testing`, with everything
+     accumulated on it since the last release, has been played/verified and
+     is ready to ship -- only then merge `Update-Testing` into `main` and
      push.
   No PR unless separately asked. Do that unless told the rules changed
   again.
+- **Releases use Semantic Versioning (`vMAJOR.MINOR.PATCH`) with written
+  patch notes.** Major = a huge change or a full release (reserved for
+  leaving beta); minor = a new feature; patch = a small fix -- pick the
+  version bump by what actually changed, not just an incrementing minor
+  number regardless. `src/changelog.js`'s in-game `CURRENT_VERSION`/
+  `CHANGELOG` should follow this same discipline, and doubles as the source
+  material for a GitHub release's patch notes: draft them as a bulleted
+  "what's new / what's fixed / what's coming next" list whenever a version
+  on `main` is ready to tag.
 - **Never push a git tag or create a GitHub release yourself.** Tag pushes
   get an HTTP 403 from GitHub (confirmed, across many attempts, not a
   proxy/egress issue -- branch pushes over the identical connection succeed).
   No GitHub MCP tool creates tags or releases either (only read tools exist:
   `get_tag`, `get_release_by_tag`, `list_tags`, `list_releases`,
-  `get_latest_release`). When a version is ready, tell the user the exact
-  commit to tag and let them cut the release manually on GitHub.
+  `get_latest_release`). When a version on `main` is ready, tell the user
+  the exact commit to tag, the SemVer version it should be, and hand them
+  the drafted patch notes to paste into the release description.
 - **Never open a pull request unless explicitly asked.**
 
 ## Architecture at a glance
