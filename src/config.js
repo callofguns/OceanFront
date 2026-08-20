@@ -1,6 +1,8 @@
 // Central tuning table. Every gameplay number lives here so balance can be
 // adjusted without hunting through the simulation code.
 
+import { WORLD_MAP } from './maps/world.js';
+
 export const TICKS_PER_SECOND = 10;
 export const TICK_MS = 1000 / TICKS_PER_SECOND;
 
@@ -486,10 +488,26 @@ export const VICTORY_LAND_SHARE = 0.6;
 
 // ----------------------------------------------------------------- maps -----
 
+/**
+ * Small/Medium/Large generate a fresh world from the seed. An entry carrying
+ * `authored` instead plays a hand-drawn map (see src/maps/) at a fixed size,
+ * where the seed still drives spawns and AI but never the terrain. `w`/`h`
+ * are filled in for authored maps too, derived from the grid, so anything
+ * reading a preset's dimensions works the same either way.
+ */
 export const MAP_PRESETS = {
   small: { key: 'small', label: 'Small', w: 300, h: 190, bots: 8, tribes: TRIBE_COUNTS.small },
   medium: { key: 'medium', label: 'Medium', w: 420, h: 260, bots: 14, tribes: TRIBE_COUNTS.medium },
   large: { key: 'large', label: 'Large', w: 560, h: 340, bots: 22, tribes: TRIBE_COUNTS.large },
+  world: {
+    key: 'world',
+    label: WORLD_MAP.label,
+    w: WORLD_MAP.grid[0].length * WORLD_MAP.scale,
+    h: WORLD_MAP.grid.length * WORLD_MAP.scale,
+    bots: WORLD_MAP.bots,
+    tribes: WORLD_MAP.tribes,
+    authored: WORLD_MAP,
+  },
 };
 
 /**

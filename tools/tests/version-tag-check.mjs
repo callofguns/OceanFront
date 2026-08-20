@@ -7,7 +7,7 @@ import { chromium } from './lib/browser.mjs';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { CURRENT_VERSION, CHANGELOG } from '../../src/changelog.js';
+import { CURRENT_VERSION, CHANGELOG, UPCOMING } from '../../src/changelog.js';
 
 const BASE = process.env.BASE || 'http://localhost:8123';
 const SHOTS = process.env.SHOTS || path.join(os.tmpdir(), 'oceanfront-test-shots');
@@ -50,6 +50,18 @@ const browser = await chromium.launch({ headless: true });
   const missing = expectedVersions.filter((v) => !versionHeaders.includes(v));
   if (missing.length === 0) ok(`all ${expectedVersions.length} release entries are present`);
   else bad(`missing entries: ${missing.join(', ')}`);
+
+  // The roadmap sits above the release history, in its own element. Keeping
+  // it out of #changelog-entries is what lets the assertion above stay an
+  // exact match against CHANGELOG.
+  const upcoming = await page.$$eval('#upcoming-list li', (els) => els.map((e) => e.textContent));
+  console.log(`  coming soon: ${JSON.stringify(upcoming)}`);
+  if (upcoming.join('|') === UPCOMING.join('|')) ok(`the Coming soon list shows all ${UPCOMING.length} items, in order`);
+  else bad(`Coming soon list does not match UPCOMING: got ${JSON.stringify(upcoming)}`);
+
+  const strayVersions = versionHeaders.filter((v) => !expectedVersions.includes(v));
+  if (strayVersions.length === 0) ok('the release history lists only shipped releases, with no roadmap items mixed in');
+  else bad(`unexpected entries in the release history: ${strayVersions.join(', ')}`);
 
   await page.screenshot({ path: `${SHOTS}/v02-open.png` });
 

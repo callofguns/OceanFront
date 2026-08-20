@@ -15,7 +15,7 @@ import {
   KEYBOARD_PAN_SPEED,
 } from './config.js';
 import { formatShort } from './render.js';
-import { CURRENT_VERSION, CHANGELOG } from './changelog.js';
+import { CURRENT_VERSION, CHANGELOG, UPCOMING } from './changelog.js';
 
 const HUD_INTERVAL_MS = 120;
 const DRAG_THRESHOLD = 4;
@@ -182,16 +182,23 @@ export class UI {
     // so each option gets a small abstract scale indicator (filled squares,
     // no image asset) alongside the label, rather than plain text alone.
     const sizePicker = $('size-picker');
-    Object.values(MAP_PRESETS).forEach((preset, index) => {
+    const presets = Object.values(MAP_PRESETS);
+    // Filled segments come from how big the world actually is, not from the
+    // preset's position in the list: hand-drawn maps sit alongside the
+    // generated sizes and have their own fixed dimensions, so counting by
+    // index would run off the end of the three segments.
+    const biggest = Math.max(...presets.map((p) => p.w * p.h));
+    presets.forEach((preset) => {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'choice size-card' + (preset.key === this.settings.preset ? ' is-active' : '');
 
+      const filled = Math.max(1, Math.ceil(((preset.w * preset.h) / biggest) * 3));
       const scale = document.createElement('span');
       scale.className = 'size-scale';
       for (let i = 0; i < 3; i++) {
         const seg = document.createElement('span');
-        seg.className = 'size-scale-seg' + (i <= index ? ' is-filled' : '');
+        seg.className = 'size-scale-seg' + (i < filled ? ' is-filled' : '');
         scale.appendChild(seg);
       }
       btn.appendChild(scale);
@@ -345,6 +352,16 @@ export class UI {
   #buildChangelog() {
     const tag = $('changelog-tag');
     tag.textContent = CURRENT_VERSION;
+
+    // The roadmap lives in its own element rather than inside
+    // #changelog-entries, so anything reading that container still sees
+    // exactly the shipped releases and nothing else.
+    const upcoming = $('upcoming-list');
+    for (const item of UPCOMING) {
+      const li = document.createElement('li');
+      li.textContent = item;
+      upcoming.appendChild(li);
+    }
 
     const entries = $('changelog-entries');
     for (const entry of CHANGELOG) {
