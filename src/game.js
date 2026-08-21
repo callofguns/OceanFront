@@ -436,10 +436,44 @@ export class Game {
       return existing;
     }
 
-    const attack = new Attack(attacker.id, targetId, committed);
+    // Two nations attacking each other at once is what turns a border into a
+    // flicker: each side's frontier logic hands back exactly what the other
+    // just took, and neither side's budget is sensitive enough to the
+    // other's real strength to converge (see HANDOFF.md). OpenFrontIO's fix,
+    // ported exactly (their incomingAttacks/outgoingAttacks cancellation in
+    // AttackExecution.ts): a new attack immediately meets whatever the enemy
+    // already has coming the other way, and the two pools cancel down to one
+    // net force before any tile changes hands. There is never more than one
+    // live attack between the same two players.
+    let net = committed;
+    if (targetId >= 0) {
+      const opposing = this.attacks.find(
+        (a) => !a.done && a.attackerId === targetId && a.targetId === attacker.id
+      );
+      if (opposing) {
+        if (opposing.troops > net) {
+          // The incoming attack outweighs this one and absorbs it whole --
+          // no attack of its own is ever created here. Not refunded: those
+          // troops are spent cancelling the bigger force, not returned home.
+          opposing.troops -= net;
+          return null;
+        }
+        // This attack outweighs (or matches) the incoming one -- absorb it
+        // whole and continue with the remainder. Same no-refund rule
+        // applies to the cancelled attack's troops.
+        net -= opposing.troops;
+        opposing.done = true;
+      }
+    }
+    if (net < ATTACK_MIN_TROOPS) {
+      attacker.troops += net;
+      return null;
+    }
+
+    const attack = new Attack(attacker.id, targetId, net);
     this.#seedFrontier(attack);
     if (attack.frontier.length === 0) {
-      attacker.troops += committed;
+      attacker.troops += net;
       return null;
     }
     this.attacks.push(attack);

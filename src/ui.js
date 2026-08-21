@@ -850,9 +850,18 @@ export class UI {
 
     const troops = human.troops * human.attackRatio;
     if (game.borders(human, targetId)) {
+      // launchAttack nets a new attack against whatever the target already
+      // has coming the other way (see Game#launchAttack) -- a null result
+      // can now mean "consumed meeting their invasion", not just "too few
+      // troops", and the generic toast would be actively misleading there.
+      const beingInvadedByTarget = game.attacksOn(human.id).some((a) => a.attackerId === targetId);
       const attack = game.launchAttack(human, targetId, troops);
       if (!attack) {
-        this.toast('Not enough troops to mount that attack.');
+        this.toast(
+          beingInvadedByTarget
+            ? `Your attack was consumed meeting ${game.players[targetId].name}'s invasion.`
+            : 'Not enough troops to mount that attack.'
+        );
         return;
       }
       const name = targetId >= 0 ? game.players[targetId].name : 'unclaimed land';
