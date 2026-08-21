@@ -406,6 +406,25 @@ rediscover them a second time.
   one silently disabled river-mouth carving and cost a debugging round.
   Where a typed array holds a value that later needs comparing for
   equality, record the fact in a separate flag array instead.
+- **Two independent `Attack` objects fighting the same border is what
+  boils it.** Before this fix, `A→B` and `B→A` coexisted in `this.attacks`
+  with zero interaction -- each side's frontier logic handed straight back
+  exactly what the other just took, sometimes flipping one tile twice in a
+  single tick, and neither side's budget was sensitive enough to relative
+  strength to converge (a losing side's growing, ragged frontier actually
+  *increased* its own budget -- an oscillator, not a damper).
+  `Game#launchAttack` now ports OpenFrontIO's real fix exactly
+  (`AttackExecution.ts`'s `incomingAttacks`/`outgoingAttacks`
+  cancellation): a new attack immediately nets against any existing attack
+  running the other way between the same two players -- smaller pool
+  fully cancelled with no refund, larger pool reduced by the smaller
+  pool's size and continues. This is a structural invariant (there is
+  never more than one live attack between the same two players), not a
+  tuning knob -- any future change to attack creation has to preserve it.
+  `tools/tests/mutual-attack-test.mjs`'s real-match check (running a
+  genuine all-AI match and asserting the invariant every tick) is the
+  fastest way to notice if it broke -- the hand-painted cases alone missed
+  a real violation that check caught on the first try.
 
 ## How to verify a change
 
