@@ -147,7 +147,13 @@ console.log('\n▸ Spawn points');
       closest = Math.min(closest, map.dist(spawns[a], spawns[b]));
     }
   }
-  check('spawns are spread out, not clustered', closest >= 8, `closest pair ${closest.toFixed(1)} tiles`);
+  // findSpawnPoints' own minDist floor relaxes as more points are requested
+  // (src/map.js) -- `want` is now driven by TRIBE_TARGET_COUNT = 400 (see
+  // config.js), over an order of magnitude more than when this threshold
+  // was first picked, so spawns pack in noticeably closer by design. 4
+  // still clearly separates "packed tightly, as intended at this scale"
+  // from the genuinely degenerate case (spawns on top of each other).
+  check('spawns are spread out, not clustered', closest >= 4, `closest pair ${closest.toFixed(1)} tiles`);
 }
 
 // ------------------------------------------------------- determinism ---

@@ -35,8 +35,26 @@ export const TERRAIN_NAMES = ['Ocean', 'Plains', 'Highland', 'Mountain'];
  * doubled, 5.1->10.3min) even though land was being claimed *faster* than
  * before and no combo stalled or produced a sub-3-minute blowout.
  * Re-verified via a full sweep after this cut.
+ *
+ * Cut a further 40% (to the current 2.7/3.36/4.05) this round, for an
+ * unrelated reason: porting the real, un-scaled triggerRatio/reserveRatio
+ * aggression system (config.js's ai section) makes every bot, Hard
+ * included, wait for a noticeably fuller army before attacking than the
+ * old difficulty-scaled `readiness` ever did -- faithful to OpenFrontIO's
+ * own source, but it slowed combat down enough on its own (verified with
+ * `tribes: 0`, isolating the aggression system from this round's other
+ * changes) that `large/hard` -- previously OceanFront's *fastest*
+ * combo -- started occasionally blowing straight through pacing-sweep's
+ * 30-minute cap without a winner. Since the newly-ported ratios are
+ * deliberately not a difficulty lever (matching OpenFrontIO exactly, see
+ * the ai section) they aren't the right place to compensate; TERRAIN_MAG
+ * is the same broad, already-established lever used for the cut above,
+ * so this round pulls it again rather than reaching for a bespoke fix.
+ * Re-verified via a full pacing-sweep afterward: zero stalls and zero
+ * sub-3-minute blowouts across all size/difficulty combos, both with the
+ * new tribe scale (TRIBE_TARGET_COUNT, below) and in isolation.
  */
-export const TERRAIN_MAG = [Infinity, 4.5, 5.6, 6.75];
+export const TERRAIN_MAG = [Infinity, 2.7, 3.36, 4.05];
 export const TERRAIN_SPEED = [Infinity, 16.5, 20, 25];
 /** The Highland entry -- OpenFrontIO's own "100" -- used to normalize `mag`
  *  back to its {0.8, 1.0, 1.2} terrain factor inside the cost formula,
@@ -185,6 +203,51 @@ export const AI_BETRAYAL_WEAK_ALLY_RATIO = 0.2;
  *  the bot's aggression. */
 export const AI_BETRAYAL_WEAK_ALLY_CHANCE = 0.15;
 
+/**
+ * The real aggression system, ported from OpenFrontIO's NationExecution.ts/
+ * TribeExecution.ts: three ratios rolled once per bot at construction, the
+ * same range for a nation or a tribe, and deliberately NOT scaled by
+ * difficulty (OpenFrontIO's own source rolls these with a plain
+ * `random.nextInt`, no tier multiplier in sight -- difficulty there only
+ * ever touches cadence and which strategies are tried, both of which
+ * OceanFront already models via thinkRange/strictAttacks). Replaces the
+ * old invented `aggression`/`expansionism` personality traits.
+ *
+ *  - reserveRatio is a hard gate: below it, never attack a rival.
+ *  - triggerRatio is a softer gate: below it, still attack with a flat
+ *    10% chance per think (see AI_TRIGGER_OVERRIDE_CHANCE).
+ *  - Attacking a rival commits everything above `maxTroops * reserveRatio`;
+ *    attacking open land (or a tribe, via #attackNearbyTribes) commits
+ *    everything above the smaller `maxTroops * expandRatio` instead.
+ */
+export const AI_TRIGGER_RATIO_RANGE = [0.5, 0.6];
+export const AI_RESERVE_RATIO_RANGE = [0.3, 0.4];
+export const AI_EXPAND_RATIO_RANGE = [0.1, 0.2];
+/** Flat per-think chance to attack anyway while below triggerRatio. */
+export const AI_TRIGGER_OVERRIDE_CHANCE = 0.1;
+
+/**
+ * A nation's dedicated tribe-hunting behavior, ported from OpenFrontIO's
+ * attackBots(): nations go after nearby tribes preferentially and can hit
+ * several at once, independent of (and in addition to) the single ordinary
+ * attack #makeWar's main chain allows. Commit size is target.troops() * 4,
+ * capped at the attacker's own maxTroops, and skipped entirely unless a
+ * decisive win is affordable (maxTroops >= target.troops() * 2) --
+ * OpenFrontIO's exact shape, verbatim.
+ */
+export const AI_TRIBE_ATTACK_COMMIT_MULT = 4;
+export const AI_TRIBE_ATTACK_MIN_MULT = 2;
+/** How many tribes a nation will attack simultaneously, by difficulty --
+ *  OpenFrontIO's own tiers are 1 / 1-2 / 3 / 100 (Easy..Impossible);
+ *  rescaled onto this project's three tiers, keeping Hard's "go after a
+ *  handful at once" step up rather than porting Impossible's effectively
+ *  unlimited figure, which has no equivalent tier here. */
+export const AI_TRIBE_PARALLELISM = { easy: 1, normal: 2, hard: 4 };
+/** Attacking a tribe costs less than attacking a nation or the human --
+ *  OpenFrontIO's Config.ts exact mag *= 0.7 discount when the defender is a
+ *  Bot. Applied in Game#attackLogic. */
+export const TRIBE_DEFENSE_DISCOUNT = 0.7;
+
 // ----------------------------------------------------------------- tribes ---
 /**
  * Tribes are the game's second AI archetype: small, lazy bands that exist
@@ -245,20 +308,43 @@ export const TRIBE_BOAT_CHANCE = 0.25;
 export const TRIBE_BOAT_COMMIT = 0.4;
 export const TRIBE_BOAT_MIN_TROOPS_FACTOR = 4;
 
-/** How many extra AI-controlled players each map size gets on top of its
- *  `bots` (full nations) -- see MAP_PRESETS, below. First-pass counts,
- *  measured against findSpawnPoints' spawn-density floor (no fallback
- *  spawns across a wide seed sweep at these counts) rather than guessed;
- *  tune here first if pacing needs it. */
-export const TRIBE_COUNTS = { small: 6, medium: 10, large: 16 };
+/**
+ * How many tribes every map size requests, on top of its `bots` (full
+ * nations) -- see MAP_PRESETS, below. OpenFrontIO's own real design is a
+ * flat request identical on every map, the realized count purely whatever
+ * the spawn algorithm's geometry can fit -- so this stays one flat number
+ * everywhere rather than a per-preset table, matching that shape. The
+ * number itself is NOT their literal 400, though: that figure assumes
+ * their own SpawnExecution, which has a fixed, non-relaxing
+ * minDistanceBetweenPlayers and simply spawns fewer than requested once a
+ * map is full. findSpawnPoints (src/map.js) instead relaxes its minDist
+ * floor until the request is met, so asking for 400 on OceanFront's
+ * smaller presets doesn't degrade to "fewer, still reasonably spaced" the
+ * way it does for OpenFrontIO -- it packs every last one in, however
+ * tight. Measured directly this round: at 400 on the small preset (26k
+ * land tiles), a completely idle human is fully boxed in by neighbouring
+ * tribes within 100 ticks in every seed tried (0 neutral border tiles
+ * left) -- a genuine playability regression, not a cosmetic one. 100 was
+ * then verified the same way (idle human, 100 ticks, three seeds) to
+ * leave a healthy 20-28 neutral border tiles on every preset from small
+ * through World, so it's the figure actually shipped -- still roughly
+ * an order of magnitude above the old per-preset table (6/10/16), just
+ * not literally OpenFrontIO's number, which their own spawn algorithm's
+ * different fallback behavior doesn't force here. Tune down here (and/or
+ * AI_TRIBE_PARALLELISM) if a future pacing-sweep finds even this too
+ * costly or unplayable on some preset. */
+export const TRIBE_TARGET_COUNT = 100;
 
 /** Muted palette, kept separate from PLAYER_COLORS so tribes read as
  *  background at a glance and never collide with a nation's colour. An
  *  evenly-spread 16-entry sample of OpenFrontIO's own bot color pool (its
  *  default-theme.json's `botColors`, 49 entries, all low-saturation
  *  olive/slate/dusty-rose tones -- picked over inventing a new palette so
- *  tribes read exactly as muted as the archetype they're ported from) --
- *  16 entries = the largest tribe count above, so no reuse within one match. */
+ *  tribes read exactly as muted as the archetype they're ported from).
+ *  TRIBE_TARGET_COUNT is now well past 16, so colors necessarily repeat
+ *  across a match (`colors[i % colors.length]` in Game#createTribes) --
+ *  harmless, since the whole point is that tribes read as background, not
+ *  as individually distinct the way PLAYER_COLORS' nations do. */
 export const TRIBE_COLORS = [
   '#96a08c', '#aaaa78', '#96aa96', '#788c78',
   '#82a096', '#8296aa', '#8ca0aa', '#78828c',
@@ -496,16 +582,16 @@ export const VICTORY_LAND_SHARE = 0.6;
  * reading a preset's dimensions works the same either way.
  */
 export const MAP_PRESETS = {
-  small: { key: 'small', label: 'Small', w: 300, h: 190, bots: 8, tribes: TRIBE_COUNTS.small },
-  medium: { key: 'medium', label: 'Medium', w: 420, h: 260, bots: 14, tribes: TRIBE_COUNTS.medium },
-  large: { key: 'large', label: 'Large', w: 560, h: 340, bots: 22, tribes: TRIBE_COUNTS.large },
+  small: { key: 'small', label: 'Small', w: 300, h: 190, bots: 8, tribes: TRIBE_TARGET_COUNT },
+  medium: { key: 'medium', label: 'Medium', w: 420, h: 260, bots: 14, tribes: TRIBE_TARGET_COUNT },
+  large: { key: 'large', label: 'Large', w: 560, h: 340, bots: 22, tribes: TRIBE_TARGET_COUNT },
   world: {
     key: 'world',
     label: WORLD_MAP.label,
     w: WORLD_MAP.grid[0].length * WORLD_MAP.scale,
     h: WORLD_MAP.grid.length * WORLD_MAP.scale,
     bots: WORLD_MAP.bots,
-    tribes: WORLD_MAP.tribes,
+    tribes: TRIBE_TARGET_COUNT,
     authored: WORLD_MAP,
   },
 };
@@ -521,21 +607,22 @@ export const SPAWN_POOL_OVERSHOOT = 1.25;
 export const SPAWN_POOL_MARGIN = 6;
 
 /**
- * Bot difficulty, chosen on the main menu. Scales bots on five axes:
+ * Bot difficulty, chosen on the main menu. Scales bots on four axes:
  * troopsCapMultiplier and troopsMultiplier (troop *cap* and troop *growth
  * rate*, scaled separately -- OpenFrontIO's own maxTroops()/
  * troopIncreaseRate() both take an independent difficulty multiplier, so
  * this ports both rather than only growth), goldMultiplier (gold income --
  * unrelated to troops now that the two are fully decoupled, kept as its own
- * tuned dial, replacing the old single `economy` field), aggression (the
- * personality traits in AiController, so harder bots also attack sooner and
- * more often, not just with a bigger stack behind them), thinkRange (ticks
- * between re-evaluations -- how often a bot reconsiders its posture and
- * looks for a fight; this is the single biggest lever, since it changes how
- * fast a bot reacts to a weakening rival or an opening on the frontier, not
- * just how strong it is once it decides to act), and readiness (the
- * standing-army fullness a bot wants before committing to a fight -- lower
- * means attacking sooner with a thinner army).
+ * tuned dial, replacing the old single `economy` field), aggression (now
+ * purely a diplomacy dial -- how readily a bot breaks a pact, see
+ * #doDiplomacy/#maybeBetrayWeakAlly in ai.js; it no longer drives attack
+ * targeting or commit size, which now come from the real, NOT
+ * difficulty-scaled triggerRatio/reserveRatio/expandRatio ported from
+ * OpenFrontIO -- see the ai section, above), and thinkRange (ticks between
+ * re-evaluations -- how often a bot reconsiders its posture and looks for a
+ * fight; this is the single biggest attack-behavior lever left, since it
+ * changes how fast a bot reacts to a weakening rival or an opening on the
+ * frontier, not just how strong it is once it decides to act).
  * troopsCapMultiplier/troopsMultiplier map onto OpenFrontIO's own *outer*
  * difficulty pair (its Easy/Impossible values, 0.5/0.9 and 1.25/1.05) rather
  * than its middle tiers -- OceanFront's "hard" is deliberately stronger than
@@ -543,27 +630,29 @@ export const SPAWN_POOL_MARGIN = 6;
  * the documented unscaled baseline, the same role OpenFrontIO's own
  * "Medium" (1.0/1.0) plays.
  * The human player is never affected by any of this -- it only ever scales
- * bots. 'normal' keeps the previous flat values (18-34 ticks, 0.45
- * readiness) as the unscaled baseline; every multiplier being 1 is what
- * keeps Normal's *strength* unchanged from before these tiers existed -- it
- * does not freeze the underlying decision logic itself, which improves for
- * every tier together.
+ * bots. 'normal' keeps the previous flat thinkRange (18-34 ticks) as the
+ * unscaled baseline; every multiplier being 1 is what keeps Normal's
+ * *strength* unchanged from before these tiers existed -- it does not
+ * freeze the underlying decision logic itself, which improves for every
+ * tier together. `readiness` was removed with the invented aggression
+ * system it gated -- reserveRatio/triggerRatio supersede it, deliberately
+ * un-scaled by tier, matching OpenFrontIO exactly.
  */
 export const DIFFICULTIES = {
   easy: {
     key: 'easy', label: 'Easy',
     troopsCapMultiplier: 0.5, troopsMultiplier: 0.9, goldMultiplier: 0.6, aggression: 0.6,
-    thinkRange: [32, 55], readiness: 0.55,
+    thinkRange: [32, 55],
   },
   normal: {
     key: 'normal', label: 'Normal',
     troopsCapMultiplier: 1, troopsMultiplier: 1, goldMultiplier: 1, aggression: 1,
-    thinkRange: [18, 34], readiness: 0.45,
+    thinkRange: [18, 34],
   },
   hard: {
     key: 'hard', label: 'Hard',
     troopsCapMultiplier: 1.25, troopsMultiplier: 1.05, goldMultiplier: 1.6, aggression: 1.45,
-    thinkRange: [10, 20], readiness: 0.35,
+    thinkRange: [10, 20],
     // Refuses to launch a token attack under 20% of the target's troops
     // (unless already under attack itself) rather than waste a cycle
     // donating troops to the rebalancer for no real gain.
