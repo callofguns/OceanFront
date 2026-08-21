@@ -20,8 +20,10 @@ On `main` (or `Update-Testing`, staged for a later merge -- check which with
 `git log`). Latest version tag in-game is whatever `CURRENT_VERSION` says in
 `src/changelog.js` -- check there and with `git log -1` for the exact commit,
 rather than trusting a hash written here, since both move. As of this
-hand-off that's **v2.5.0-beta**, hand-made maps plus the World map (see the
-load-bearing lessons below). Whether any
+hand-off that's **v2.6.0-beta** on `main`, with ten more hand-authored maps
+(the six continents plus four original pattern/arena maps) merged into
+`Update-Testing` on top of it, not yet released under a bumped version (see
+the load-bearing lessons below). Whether any
 recent version has been cut as a GitHub release is worth asking the user
 rather than assuming (see below -- this session can't push tags itself, so
 there's no way to check from git alone).
@@ -389,9 +391,9 @@ rediscover them a second time.
   the world map, stranding the Danube, Volga and Nile together. Hand-fixing
   the grid turned into whack-a-mole, so `connectRiversToSea()` in
   `src/map.js` now guarantees the invariant for every map, and
-  `world-map-test.mjs` asserts it. Bodies of water the author drew as
-  enclosed still stay inland lakes -- only components holding a *carved
-  river* get joined up.
+  `authored-maps-test.mjs` asserts it on every authored map that carries a
+  river. Bodies of water the author drew as enclosed still stay inland
+  lakes -- only components holding a *carved river* get joined up.
 - **`labelOceans()` clears `oceanComponent` before filling.** It used to
   skip any tile already carrying an id, which is fine when it runs once but
   silently wrong on a second pass: newly carved water got fresh ids while
@@ -558,6 +560,75 @@ Full details, including what each test actually checks, are in
   continents come out, `AUTHORED_NOISE`/`_COARSE` for how crinkled the
   coastlines are, `AUTHORED_RELIEF` for shading variation, `RIVER_MEANDER`
   for how much rivers wander.
+- **Ten more hand-authored maps (six continents, four original pattern
+  maps) were added the same way World was, not copied from OpenFrontIO.**
+  OpenFrontIO's own map roster (118 maps, `Maps.gen.ts`) and its map
+  terrain data specifically (not just their code) are CC BY-SA 4.0 licensed
+  with required attribution -- researched directly against their actual
+  repo before deciding, same as always when OpenFrontIO comes up. Literally
+  importing their compiled map files would still be forking another
+  project's specific derived creative content wholesale, which is a
+  different kind of thing than every other OpenFrontIO round this project
+  has done (porting mechanics/formulas, never assets), and it would break
+  this project's own already-established precedent: World is documented
+  above as OceanFront's own hand-drawn interpretation, not a copy of
+  anything. This round is the same move repeated ten more times -- Africa,
+  Asia, Europe, North America, South America, Oceania (real, familiar
+  continent outlines, which are basic geographic fact, not anyone's
+  copyrightable expression) plus Labyrinth, The Box, Onion, Branching Paths
+  (four original abstract arena designs, only in the *spirit* of
+  OpenFrontIO's "arcade" map category -- their actual pattern-map designs
+  were deliberately never looked at, for the same reason). All ten went
+  through a scratch procedural generator (not committed, scaffolding only)
+  rather than hand-typed ASCII art purely to make tens of thousands of grid
+  characters tractable and to iterate against the real numeric test bands
+  directly; the checked-in output (`src/maps/*.js`) is the same flat
+  `key/label/scale/bots/noiseSeed/grid` shape as `world.js`, wired into
+  `MAP_PRESETS` through a new `authoredPreset()` helper in `config.js` that
+  every authored map (World included) now goes through, instead of a
+  hand-typed block per map. `tools/tests/world-map-test.mjs` was
+  generalized into `tools/tests/authored-maps-test.mjs`, looping the exact
+  same checks over all 11 authored maps instead of duplicating the file.
+  - **Real bug caught by that verification, not by eyeballing a screenshot:
+    Labyrinth's maze corridors never actually connected any two rooms.**
+    `fillWallBetween`'s corridor-carving math wrote a single column/row
+    sitting at the near edge of the wall gap and stopped there -- it never
+    reached the far room, so every "corridor" was a dead-end stub and the
+    whole map was 100 sealed, disconnected one-room islands (confirmed by a
+    flood-fill: only 12 of 1215 land tiles were reachable from any single
+    room). The automated map checks didn't catch this on their own since
+    every room still individually had a valid plains spawn -- what actually
+    caught it was the pacing sweep every new preset gets run through:
+    Labyrinth stalled 3/3 seeds at the full 30-minute cap (every other
+    preset resolves in 5-9 minutes), because with no land path between
+    rooms at all, bots could only ever fight by naval attack, which is rare
+    enough that games just never resolved. Fixed by making the corridor
+    carve span the wall's *full* thickness in the direction of travel
+    instead of one edge column, at a passage width narrower than a room
+    (2 of 3 cells) so corridors still read as corridors rather than merged
+    rooms; re-verified both structurally (a full flood-fill from one room
+    now reaches every land tile) and dynamically (0/5 stalls afterward,
+    same 5-9 minute resolution time as everything else). Worth remembering
+    for any future maze/corridor-style authored map: connectivity has to be
+    checked with an actual flood-fill or a real match, not inferred from
+    "every room has a spawn" or a small rendered thumbnail -- the broken
+    version looked like uniformly-spaced islands in a preview PNG, which
+    reads as a plausible art style at a glance rather than an obvious bug.
+  - Widening that corridor fix to span the full wall thickness also opens
+    most of the wall lattice at once, since a full spanning tree touches
+    nearly every room -- that leaves whatever water isn't carved scattered
+    into several small sealed pockets rather than one connected moat. That
+    is correct for a maze's walls, not damage to route around: an early
+    attempt to force it back into one connected sea by flood-filling every
+    orphaned pocket into land pushed Labyrinth's land share to 62.9%, well
+    outside the 30-50% band every authored map is tuned to. Left as-is
+    instead (Labyrinth measures 7 disconnected water bodies), and the
+    generalized test's "not fragmented into many seas" check was scoped
+    back to only run on maps that carry a river -- it was only ever a proxy
+    for "a river didn't get stranded in its own sea" in the original
+    World-only test, not a universal invariant every authored map's water
+    has to satisfy, and promoting it to unconditional during the
+    generalization pass was a real overreach caught by this same map.
 - **The v2.3.0-beta visual redesign and pause menu are verified by the
   automated suite and a manual desktop/375px pass, not yet by a human
   playing a real match on a real phone.** The design tokens (`styles.css`'s

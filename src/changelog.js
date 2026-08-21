@@ -10,7 +10,6 @@ export const CURRENT_VERSION = 'v2.6.0-beta';
  * attached: this is what is being worked towards, not a set of promises.
  */
 export const UPCOMING = [
-  'More hand-made maps',
   'Sound and music',
   'Player profile panel',
   'Better UI',
