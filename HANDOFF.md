@@ -53,27 +53,39 @@ lose track of -- follow them until told otherwise:
      works:** fetch and check out `Update-Testing`, merge the finished
      branch into it, resolve any conflicts (regenerate rather than
      hand-merge any generated files, same as this project's general
-     merge-conflict practice), and push `Update-Testing`. Do this promptly
-     per update rather than batching several branches unmerged -- the point
-     is for `Update-Testing` itself to accumulate a few played-together
-     updates, not for branches to pile up unmerged.
+     merge-conflict practice), and push `Update-Testing`. **Do not touch
+     `CURRENT_VERSION` or add a `CHANGELOG` entry at this step** -- see the
+     version-bump bullet below, that now happens only at push-to-main time,
+     specifically so several rounds of work can pile up on `Update-Testing`
+     under one still-unbumped version before it ships as one release with
+     more in it. Do this merge promptly per update rather than batching
+     several branches unmerged -- the point is for `Update-Testing` itself
+     to accumulate a few played-together updates, not for branches to pile
+     up unmerged.
   3. Leave `main` untouched until the user explicitly says to merge (e.g.
      "push to main"). That go-ahead means `Update-Testing`, with everything
      accumulated on it since the last release, has been played/verified and
-     is ready to ship -- only then merge `Update-Testing` into `main` and
-     push.
+     is ready to ship -- **at that point**, and not before: ask the user
+     for the version number (see below), write one `CHANGELOG` entry in
+     `src/changelog.js` covering everything accumulated since the last
+     release (every round merged into `Update-Testing` since then, not
+     just the most recent one), bump `CURRENT_VERSION`, commit that, then
+     merge `Update-Testing` into `main` and push.
   No PR unless separately asked. Do that unless told the rules changed
   again.
-- **Releases use Semantic Versioning (`vMAJOR.MINOR.PATCH`), and the user
-  picks the version number, not the session.** Previously the session chose
-  the bump itself (major = a huge change or leaving beta, minor = a new
-  feature, patch = a small fix). Now: when a round of work is ready to ship
-  (a changelog entry is needed), ask the user what `CURRENT_VERSION` should
-  be instead of deciding it. Everything else about the changelog is
-  unchanged -- `src/changelog.js`'s `CHANGELOG` entry is still written as a
+- **Releases use Semantic Versioning (`vMAJOR.MINOR.PATCH`), the user picks
+  the version number, and the bump only happens at push-to-main time.**
+  Two rules stacked here, both from explicit user instruction: the version
+  number itself is the user's call, not the session's (ask rather than
+  decide); and unlike earlier in this project, a `CURRENT_VERSION` bump and
+  its `CHANGELOG` entry are **not** written per feature round as it lands
+  on `Update-Testing` -- they wait until the user actually says "push to
+  main," at which point the entry summarizes the whole batch that
+  accumulated, not just the last thing merged. This is deliberate: it lets
+  a release carry more in it instead of a version bump for every single
+  round. `src/changelog.js`'s `CHANGELOG` entry is still written as a
   bulleted "what's new" list and still doubles as the source material for
-  the GitHub release's patch notes, only the version number itself is the
-  user's call now.
+  the GitHub release's patch notes -- only *when* it gets written changed.
 - **Releases are automated -- `.github/workflows/release.yml` tags and
   publishes on every push to `main`.** A Claude Code session still can't
   push a git tag directly (confirmed HTTP 403 from GitHub across many
