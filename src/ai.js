@@ -11,6 +11,13 @@ import {
   AI_WEAK_ATTACK_RATIO,
   AI_BETRAYAL_WEAK_ALLY_RATIO,
   AI_BETRAYAL_WEAK_ALLY_CHANCE,
+  AI_TRIGGER_RATIO_RANGE,
+  AI_RESERVE_RATIO_RANGE,
+  AI_EXPAND_RATIO_RANGE,
+  AI_TRIGGER_OVERRIDE_CHANCE,
+  AI_TRIBE_ATTACK_COMMIT_MULT,
+  AI_TRIBE_ATTACK_MIN_MULT,
+  AI_TRIBE_PARALLELISM,
 } from './config.js';
 
 // Fallback range for the default tier below -- identical to 'normal' in
@@ -18,27 +25,42 @@ import {
 // a tier (older test helpers, tools/simulate.js's human-AI) behaves exactly
 // as it did before difficulty-scaled cadence existed.
 const DEFAULT_THINK_RANGE = [18, 34];
-const DEFAULT_READINESS = 0.45;
+
+/** Uniform roll within a [lo, hi] range, e.g. one of config.js's
+ *  AI_*_RATIO_RANGE pairs. */
+function randRange(rng, [lo, hi]) {
+  return lo + rng() * (hi - lo);
+}
 
 export class AiController {
   /** `tier` is a DIFFICULTIES entry from config.js (defaults to a neutral
-   *  1x multiplier plus Normal's cadence/readiness, so a bot can still be
-   *  constructed without one, e.g. in older test helpers). */
+   *  1x multiplier plus Normal's cadence, so a bot can still be constructed
+   *  without one, e.g. in older test helpers). */
   constructor(player, rng, tier = { aggression: 1 }) {
     this.player = player;
     this.rng = rng;
-    // Personality, so bots do not all play identically -- scaled by
-    // difficulty, so harder bots lean further toward attacking sooner and
-    // more often, not just having a bigger economy behind them.
+    // Diplomacy-only personality now (see #doDiplomacy/#maybeBetrayWeakAlly)
+    // -- scaled by difficulty, so harder bots break pacts more readily, not
+    // just field a bigger economy. No longer drives attack targeting or
+    // commit size; see triggerRatio/reserveRatio/expandRatio, below, for
+    // that.
     this.aggression = (0.5 + rng() * 0.9) * tier.aggression;
     this.greed = (0.6 + rng() * 0.8) * tier.aggression;
-    this.expansionism = (0.7 + rng() * 0.8) * tier.aggression;
-    // How often this bot reconsiders its posture and looks for a fight, and
-    // how full its standing army wants to be before it commits to one --
-    // the biggest single difficulty lever, since it changes reaction speed
+    // The real aggression system, ported from OpenFrontIO's
+    // NationExecution.ts (read off their actual source this round): three
+    // ratios rolled once per bot, identical range for a nation or a tribe,
+    // and deliberately NOT scaled by difficulty -- see config.js's ai
+    // section for the exact ranges and what each one gates. Replaces the
+    // old invented `expansionism` field, which was rolled here and never
+    // read anywhere else -- a real dead-code bug found while researching
+    // this port.
+    this.triggerRatio = randRange(rng, AI_TRIGGER_RATIO_RANGE);
+    this.reserveRatio = randRange(rng, AI_RESERVE_RATIO_RANGE);
+    this.expandRatio = randRange(rng, AI_EXPAND_RATIO_RANGE);
+    // How often this bot reconsiders its posture and looks for a fight --
+    // the biggest difficulty lever left, since it changes reaction speed
     // rather than just strength once a bot does act.
     this.thinkRange = tier.thinkRange ?? DEFAULT_THINK_RANGE;
-    this.readiness = tier.readiness ?? DEFAULT_READINESS;
     // Refuses a token attack that's too small to matter (see #makeWar) --
     // only on tiers that opt in.
     this.strictAttacks = tier.strictAttacks ?? false;
@@ -286,11 +308,28 @@ export class AiController {
    */
   #makeWar(game, border) {
     const p = this.player;
-    if (game.attacksBy(p.id).length > 0) return;
 
-    // Wait until the army is worth committing -- lower on harder tiers, so
-    // they commit sooner with a thinner standing army.
-    if (p.fillRatio < this.readiness) return;
+    // Hunt nearby tribes first, independent of everything below -- a
+    // nation can have several tribe attacks running at once (up to its
+    // tier's parallelism) *alongside* one ordinary attack, exactly like
+    // OpenFrontIO's own attackBots() running outside its normal
+    // single-target strategy chain.
+    this.#attackNearbyTribes(game, border);
+
+    // Only a rival- or neutral-land attack counts against the single-
+    // ordinary-attack gate -- the tribe attacks above are deliberately
+    // exempt from it.
+    const hasOrdinaryAttack = game.attacksBy(p.id).some(
+      (a) => a.targetId < 0 || !game.players[a.targetId].isTribe
+    );
+    if (hasOrdinaryAttack) return;
+
+    // Real gating ported from OpenFrontIO: reserveRatio is a hard floor
+    // (never attack below it); triggerRatio is a softer one -- still
+    // attack anyway with a flat chance rather than always waiting for a
+    // full-strength army. Neither is difficulty-scaled -- see config.js.
+    if (p.fillRatio < this.reserveRatio) return;
+    if (p.fillRatio < this.triggerRatio && this.rng() >= AI_TRIGGER_OVERRIDE_CHANCE) return;
 
     // Occasionally raid by sea even with land targets available, purely for
     // unpredictability -- not only as the no-target fallback it is below.
@@ -304,6 +343,7 @@ export class AiController {
 
     const rivals = this.#viableRivals(game, border, p.fillRatio);
     const target =
+      this.#findRetaliation(game) ??
       this.#findVictim(game, rivals) ??
       this.#findVeryWeak(rivals) ??
       this.#findLeader(game, rivals) ??
@@ -315,8 +355,13 @@ export class AiController {
       return;
     }
 
-    const commit = target === -1 ? 0.55 : 0.4 + 0.35 * this.aggression;
-    const troopsToSend = p.troops * commit;
+    // Real formula ported from OpenFrontIO: send everything above a
+    // reserve, not a flat fraction of current troops. Attacking neutral
+    // land keeps back only the smaller expandRatio reserve; attacking a
+    // rival (including a retaliation target) keeps back the bigger
+    // reserveRatio one.
+    const reserve = p.maxTroops * (target === -1 ? this.expandRatio : this.reserveRatio);
+    const troopsToSend = Math.max(0, p.troops - reserve);
 
     // Refuse a token attack too small to matter -- unless we're already
     // under attack ourselves, in which case any retaliation is worth it.
@@ -334,10 +379,81 @@ export class AiController {
   }
 
   /**
+   * OpenFrontIO's attackBots(), ported: nations hunt nearby tribes
+   * preferentially, hitting several at once (up to the difficulty tier's
+   * parallelism) rather than the one-attack-at-a-time discipline everything
+   * else in #makeWar follows. Structure-holding tribes are prioritized
+   * (denying captured buildings matters more than raw land), then the
+   * lowest-density ones -- weakest first. Bypasses the reserveRatio gate
+   * entirely (uses the smaller expandRatio reserve instead) and skips a
+   * tribe outright unless a decisive win is affordable.
+   */
+  #attackNearbyTribes(game, border) {
+    const p = this.player;
+    const parallelism = AI_TRIBE_PARALLELISM[game.difficulty] ?? AI_TRIBE_PARALLELISM.normal;
+    const alreadyTargeted = new Set(game.attacksBy(p.id).map((a) => a.targetId));
+
+    const tribes = [];
+    for (const rivalId of border.contact.keys()) {
+      if (alreadyTargeted.has(rivalId)) continue; // launchAttack would just reinforce -- skip the work
+      const rival = game.players[rivalId];
+      if (!rival.alive || !rival.isTribe || p.allies.has(rivalId)) continue;
+      tribes.push(rival);
+    }
+    if (tribes.length === 0) return;
+
+    tribes.sort((a, b) => {
+      const holdsBuildings = (b.buildings.length > 0) - (a.buildings.length > 0);
+      return holdsBuildings !== 0 ? holdsBuildings : a.density - b.density;
+    });
+
+    const reserve = p.maxTroops * this.expandRatio;
+    for (const target of tribes.slice(0, parallelism)) {
+      if (p.maxTroops < target.troops * AI_TRIBE_ATTACK_MIN_MULT) continue;
+      const troopsToSend = Math.min(
+        target.troops * AI_TRIBE_ATTACK_COMMIT_MULT,
+        Math.max(0, p.troops - reserve)
+      );
+      if (troopsToSend > 0) game.launchAttack(p, target.id, troopsToSend);
+    }
+  }
+
+  /**
+   * Fight back against whoever is currently invading us -- ignores the
+   * normal viability gate (#viableRivals' relative-strength ratio) other
+   * finders respect, exactly like OpenFrontIO's own findIncomingAttackPlayer:
+   * a weak nation still strikes back at a much stronger invader rather than
+   * always folding meekly to them. Bot/tribe attackers are excluded --
+   * #attackNearbyTribes is already the tribe-specific response, matching
+   * OpenFrontIO's own incomingAttacks filter for non-bot players.
+   */
+  #findRetaliation(game) {
+    const p = this.player;
+    let best = null;
+    let bestTroops = 0;
+    for (const atk of game.attacksOn(p.id)) {
+      const attacker = game.players[atk.attackerId];
+      if (!attacker.alive || attacker.isTribe || p.allies.has(attacker.id)) continue;
+      if (atk.troops > bestTroops) {
+        bestTroops = atk.troops;
+        best = attacker.id;
+      }
+    }
+    return best;
+  }
+
+  /**
    * Bordering, living, non-allied rivals we're not hopelessly outmatched
    * against -- the shared candidate pool every rival-targeting finder below
    * draws from, so they all respect the same "can we actually take this"
-   * gate the original single-score search used.
+   * gate the original single-score search used. Tribes are deliberately
+   * excluded: #attackNearbyTribes is their dedicated handler, run
+   * independently of this chain every think-cycle, and leaving them
+   * reachable here too creates a self-referential loop -- a tribe
+   * #attackNearbyTribes just committed troops*4 against always instantly
+   * satisfies #findVictim's "already under heavy attack" check within the
+   * very same think, which would make the ordinary chain simply reinforce
+   * that same attack forever instead of ever reaching a genuine rival.
    */
   #viableRivals(game, border, myFill) {
     const p = this.player;
@@ -345,6 +461,7 @@ export class AiController {
     for (const [rivalId, contactTiles] of border.contact) {
       const rival = game.players[rivalId];
       if (!rival.alive) continue;
+      if (rival.isTribe) continue; // #attackNearbyTribes' territory, not this chain's
       if (p.allies.has(rivalId)) continue; // bound by treaty
 
       // Fill ratio (not density -- see the boxedIn comment in #doDiplomacy)
@@ -413,7 +530,7 @@ export class AiController {
     let bestTarget = null;
     let bestScore = 0;
     for (const { rival, contactTiles, theirDensity, ratio } of rivals) {
-      let score = Math.min(contactTiles, p.troops / (theirDensity * 2 + 1)) * ratio * this.aggression;
+      let score = Math.min(contactTiles, p.troops / (theirDensity * 2 + 1)) * ratio;
       // Gang up on the runaway leader; go easy on the nearly-dead.
       if (leader && rival.id === leader.id && rival.id !== p.id) score *= 1.5;
       if (rival.tiles.size < p.tiles.size * 0.25) score *= 1.3;

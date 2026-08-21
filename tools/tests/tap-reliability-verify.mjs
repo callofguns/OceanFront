@@ -26,6 +26,22 @@ const sp = await page.evaluate((t) => {
 await page.mouse.click(sp.x, sp.y);
 await page.waitForTimeout(400);
 await page.evaluate(() => { window.OceanFront.game.human.gold = 500000; });
+// Nothing here drives the human -- it just sits at its tiny starting patch
+// for however long this whole tap sequence takes (several minutes of real
+// dwell-timed taps), so it can't be left exposed to the AI for that whole
+// stretch: this is a tap-timing test, not a combat-survival one, and an
+// idle human getting eliminated (conventional attack or a nuke, which
+// bypasses troop-cost entirely) mid-run crashes the test on an unrelated
+// "endscreen intercepts pointer events" timeout. Freezing every other
+// player's AI (the same duck-typed `if (p.ai) p.ai.update(game)` gate
+// every bot/tribe goes through, src/game.js) removes every elimination
+// vector at the source rather than trying to out-tank whatever the
+// current aggression/pacing tuning happens to be -- the economy still
+// ticks normally, only decision-making stops.
+await page.evaluate(() => {
+  const g = window.OceanFront.game;
+  for (const p of g.players) if (!p.isHuman) p.ai = null;
+});
 
 // One delegated counter for the whole run; selector + count are swapped per
 // measurement instead of adding another listener each time.

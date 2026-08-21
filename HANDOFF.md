@@ -53,27 +53,39 @@ lose track of -- follow them until told otherwise:
      works:** fetch and check out `Update-Testing`, merge the finished
      branch into it, resolve any conflicts (regenerate rather than
      hand-merge any generated files, same as this project's general
-     merge-conflict practice), and push `Update-Testing`. Do this promptly
-     per update rather than batching several branches unmerged -- the point
-     is for `Update-Testing` itself to accumulate a few played-together
-     updates, not for branches to pile up unmerged.
+     merge-conflict practice), and push `Update-Testing`. **Do not touch
+     `CURRENT_VERSION` or add a `CHANGELOG` entry at this step** -- see the
+     version-bump bullet below, that now happens only at push-to-main time,
+     specifically so several rounds of work can pile up on `Update-Testing`
+     under one still-unbumped version before it ships as one release with
+     more in it. Do this merge promptly per update rather than batching
+     several branches unmerged -- the point is for `Update-Testing` itself
+     to accumulate a few played-together updates, not for branches to pile
+     up unmerged.
   3. Leave `main` untouched until the user explicitly says to merge (e.g.
      "push to main"). That go-ahead means `Update-Testing`, with everything
      accumulated on it since the last release, has been played/verified and
-     is ready to ship -- only then merge `Update-Testing` into `main` and
-     push.
+     is ready to ship -- **at that point**, and not before: ask the user
+     for the version number (see below), write one `CHANGELOG` entry in
+     `src/changelog.js` covering everything accumulated since the last
+     release (every round merged into `Update-Testing` since then, not
+     just the most recent one), bump `CURRENT_VERSION`, commit that, then
+     merge `Update-Testing` into `main` and push.
   No PR unless separately asked. Do that unless told the rules changed
   again.
-- **Releases use Semantic Versioning (`vMAJOR.MINOR.PATCH`), and the user
-  picks the version number, not the session.** Previously the session chose
-  the bump itself (major = a huge change or leaving beta, minor = a new
-  feature, patch = a small fix). Now: when a round of work is ready to ship
-  (a changelog entry is needed), ask the user what `CURRENT_VERSION` should
-  be instead of deciding it. Everything else about the changelog is
-  unchanged -- `src/changelog.js`'s `CHANGELOG` entry is still written as a
+- **Releases use Semantic Versioning (`vMAJOR.MINOR.PATCH`), the user picks
+  the version number, and the bump only happens at push-to-main time.**
+  Two rules stacked here, both from explicit user instruction: the version
+  number itself is the user's call, not the session's (ask rather than
+  decide); and unlike earlier in this project, a `CURRENT_VERSION` bump and
+  its `CHANGELOG` entry are **not** written per feature round as it lands
+  on `Update-Testing` -- they wait until the user actually says "push to
+  main," at which point the entry summarizes the whole batch that
+  accumulated, not just the last thing merged. This is deliberate: it lets
+  a release carry more in it instead of a version bump for every single
+  round. `src/changelog.js`'s `CHANGELOG` entry is still written as a
   bulleted "what's new" list and still doubles as the source material for
-  the GitHub release's patch notes, only the version number itself is the
-  user's call now.
+  the GitHub release's patch notes -- only *when* it gets written changed.
 - **Releases are automated -- `.github/workflows/release.yml` tags and
   publishes on every push to `main`.** A Claude Code session still can't
   push a git tag directly (confirmed HTTP 403 from GitHub across many
@@ -394,6 +406,25 @@ rediscover them a second time.
   one silently disabled river-mouth carving and cost a debugging round.
   Where a typed array holds a value that later needs comparing for
   equality, record the fact in a separate flag array instead.
+- **Two independent `Attack` objects fighting the same border is what
+  boils it.** Before this fix, `A→B` and `B→A` coexisted in `this.attacks`
+  with zero interaction -- each side's frontier logic handed straight back
+  exactly what the other just took, sometimes flipping one tile twice in a
+  single tick, and neither side's budget was sensitive enough to relative
+  strength to converge (a losing side's growing, ragged frontier actually
+  *increased* its own budget -- an oscillator, not a damper).
+  `Game#launchAttack` now ports OpenFrontIO's real fix exactly
+  (`AttackExecution.ts`'s `incomingAttacks`/`outgoingAttacks`
+  cancellation): a new attack immediately nets against any existing attack
+  running the other way between the same two players -- smaller pool
+  fully cancelled with no refund, larger pool reduced by the smaller
+  pool's size and continues. This is a structural invariant (there is
+  never more than one live attack between the same two players), not a
+  tuning knob -- any future change to attack creation has to preserve it.
+  `tools/tests/mutual-attack-test.mjs`'s real-match check (running a
+  genuine all-AI match and asserting the invariant every tick) is the
+  fastest way to notice if it broke -- the hand-painted cases alone missed
+  a real violation that check caught on the first try.
 
 ## How to verify a change
 
@@ -445,6 +476,75 @@ Full details, including what each test actually checks, are in
   count, since a tribe's think cadence is far lazier than a nation's) but
   not yet played by a human. If a match feels too crowded or too empty
   early on, `MAP_PRESETS.*.tribes` is the first thing to adjust.
+- **The nation/tribe AI was reworked to match OpenFrontIO's real system**
+  (aggression, tribe targeting, spawn scale) -- researched directly against
+  their actual source, not assumed, and it landed somewhere different from
+  a literal copy in two specific, deliberate ways worth knowing about.
+  - **Aggression**: the old invented `aggression`/`expansionism` personality
+    traits (rolled per bot, difficulty-scaled) are gone --
+    `expansionism` was dead code the whole time (rolled, never read).
+    `AiController` now rolls `triggerRatio`/`reserveRatio`/`expandRatio`
+    (config.js's ai section) exactly like OpenFrontIO's `NationExecution.ts`/
+    `TribeExecution.ts`: **the same range for every difficulty tier, not
+    scaled by it** -- that's their real design, ported faithfully.
+    `reserveRatio` is a hard floor (never attack below it); `triggerRatio`
+    a softer one (a flat 10% chance to attack anyway below it); commit
+    size is `troops - maxTroops*ratio` (send everything above a reserve),
+    not the old flat fraction-of-current-troops. `aggression` itself
+    survives as a diplomacy-only dial (betrayal chance) -- it no longer
+    touches attack targeting or sizing at all.
+  - **Tribe/nation interaction**: nations now hunt bordering tribes
+    (`#attackNearbyTribes`, OpenFrontIO's `attackBots()`) in parallel with
+    -- not instead of -- one ordinary attack, up to `AI_TRIBE_PARALLELISM`
+    simultaneous tribe fights, discounted `TRIBE_DEFENSE_DISCOUNT` (0.7x
+    `mag` in `attackLogic()`, their exact number). `#findRetaliation`
+    (`findIncomingAttackPlayer`) makes a nation fight back against its
+    biggest current attacker ahead of everything else, bypassing the
+    normal viability gate -- but ignores tribe attackers, since
+    `#attackNearbyTribes` already owns that. One non-obvious fix needed to
+    make the "independent" part actually true: tribes had to be excluded
+    from `#viableRivals` entirely, because a tribe `#attackNearbyTribes`
+    just hit (committing `troops*4`) instantly looks like a `#findVictim`
+    "under heavy attack" target to the very same think-cycle's ordinary
+    chain -- without the exclusion, a nation would just reinforce its own
+    tribe attack forever instead of ever reaching a real rival.
+  - **Spawn scale is 100, not OpenFrontIO's literal 400**, deliberately.
+    `TRIBE_TARGET_COUNT` (config.js) is one flat number requested on every
+    preset -- that flat-everywhere shape *is* OpenFrontIO's real design --
+    but 400 itself assumes their own `SpawnExecution`'s fixed,
+    non-relaxing minimum spawn distance, which just spawns fewer bots than
+    requested once a map fills up. OceanFront's `findSpawnPoints`
+    (src/map.js) instead relaxes its minDist floor until the request is
+    met, so it does not degrade the same way: measured directly, 400 on
+    the small preset (26k land tiles) leaves an idle human with zero
+    neutral border tiles within 100 ticks in every seed tried -- boxed in
+    immediately, not a cosmetic issue (`no neutral border tile found`
+    actually broke `browsertest.mjs`'s live "attack neutral land" step).
+    100 was verified the same way to leave 20-28 neutral border tiles on
+    every preset from small through World. If tuning this further,
+    `TRIBE_TARGET_COUNT` and `AI_TRIBE_PARALLELISM` are the two levers, in
+    that order.
+  - **`TERRAIN_MAG` was cut a further 40%** (4.5/5.6/6.75 down to
+    2.7/3.36/4.05 -- see its own comment in config.js for the full
+    derivation) for a reason unrelated to tribes at all: the real
+    triggerRatio/reserveRatio system makes every bot, Hard included, wait
+    for a noticeably fuller army before attacking than the old
+    difficulty-scaled `readiness` ever did. Verified in isolation (`tribes:
+    0`, so purely the aggression-system change): `large/hard` --
+    previously OceanFront's *fastest* combo at ~5.5min average -- started
+    occasionally blowing through pacing-sweep's 30-minute cap with no
+    winner. Since the new ratios are deliberately not a difficulty lever
+    (matching OpenFrontIO), they're the wrong place to compensate;
+    `TERRAIN_MAG` is the already-established broad pacing lever, so this
+    round pulled it again rather than inventing a bespoke fix. Re-verified
+    clean afterward: zero stalls, zero sub-3-minute blowouts across all 9
+    small/medium/large x easy/normal/hard combos, both with the new tribe
+    scale and in isolation.
+  - Screenshotted (World map, Hard, several thousand ticks in): reads as a
+    real, active multi-nation war -- betrayals, nuclear strikes, a nation
+    wiped off the map -- not a degenerate patchwork, and by that point in
+    the match only a handful of the 100 tribes were still alive, which is
+    `#attackNearbyTribes` doing its job rather than a bug.
 - **The World map (v2.5.0-beta) is a first authored map, verified but not
   played by a human.** `tools/simulate.js --size=world` across several seeds
   lands at 4.0 to 6.8 game-minutes against `medium`'s 4.7 to 6.1, with lower

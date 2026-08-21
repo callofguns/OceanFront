@@ -11,6 +11,7 @@
 // encirclement-test.mjs / ai-behavior-test.mjs. Every case here is written
 // to fail against the pre-port tileCost()/#processAttack.
 import { Game, NEUTRAL } from '../../src/game.js';
+import { makeRng } from '../../src/rng.js';
 import {
   MAP_PRESETS, PLAINS, MOUNTAIN, OCEAN, BUILDINGS,
   COMBAT_RATIO_FLOOR, COMBAT_RATIO_CEIL,
@@ -51,6 +52,14 @@ function blankGame() {
     game.map.terrain[game.map.idx(x, y)] = PLAINS;
     game.setOwner(game.map.idx(x, y), p.id);
   }
+  // Re-seed rather than reuse the post-construction cursor: constructing a
+  // Game now rolls hundreds of tribes' names/colors/AI personalities
+  // (TRIBE_TARGET_COUNT = 400 -- see config.js), so the number of rng()
+  // draws construction itself consumes keeps shifting as the game evolves.
+  // Fixing it here decouples every test below from that entirely, the same
+  // way the rest of this function already gives them a deterministic board
+  // instead of whatever construction happened to generate.
+  game.rng = makeRng(1);
   return game;
 }
 
