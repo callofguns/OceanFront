@@ -25,7 +25,8 @@ export const WORLD_MAP = {
   /** Each authored cell becomes scale x scale tiles. 96x48 at 5 = 480x240. */
   scale: 5,
   bots: 14,
-  tribes: 10,
+  // No per-map tribes field -- every preset requests the same flat
+  // TRIBE_TARGET_COUNT (src/config.js), OpenFrontIO's own real design.
   /** Fixed, so this map looks the same in every match. The match seed still
    *  drives spawns and AI, it just never touches the terrain. */
   noiseSeed: 20250820,

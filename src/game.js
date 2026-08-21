@@ -58,6 +58,7 @@ import {
   TRIBE_TROOPS_MULTIPLIER,
   TRIBE_GOLD_MULTIPLIER,
   TRIBE_COLORS,
+  TRIBE_DEFENSE_DISCOUNT,
   SPAWN_POOL_OVERSHOOT,
   SPAWN_POOL_MARGIN,
 } from './config.js';
@@ -351,6 +352,10 @@ export class Game {
       mag *= BUILDINGS.defense.lossBonus;
       speed *= BUILDINGS.defense.speedBonus;
     }
+    // A tribe's land is cheaper to take -- OpenFrontIO's Config.ts exact
+    // mag *= 0.7 discount whenever the defender is a Bot (their name for
+    // what OceanFront calls a tribe; see tribe.js's header comment).
+    if (defender && defender.isTribe) mag *= TRIBE_DEFENSE_DISCOUNT;
 
     if (!defender) {
       return {

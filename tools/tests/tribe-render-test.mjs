@@ -102,7 +102,22 @@ if (!result.ok) {
   check('renderer.colors marks the tribe as noBorder', result.tribeIsNoBorder === true);
   check('renderer.colors does NOT mark the nation as noBorder', result.nationIsNoBorder === false);
 
-  const close = (a, b, tol = 2) => a.every((v, i) => Math.abs(v - b[i]) <= tol);
+  // A noBorder owner's tile color always blends against ITS OWN tile's
+  // baseColor (src/render.js's rebuildLayer -- both the border and
+  // interior branches key off `baseColor[i*3]`, never a neighbour's), and
+  // baseColor is independently randomized per tile: a +-7-per-channel
+  // grain term plus, within the same terrain type, a continuous
+  // height-based color ramp (map.js's buildAuthoredMap/generateMap), so
+  // two genuinely borderless tiles at different elevations can legitimately
+  // differ well beyond grain alone -- unrelated to any border stroke.
+  // Which two tiles get sampled isn't reproducible run to run either,
+  // despite the fixed seed: this test advances the match with a real
+  // wall-clock `waitForTimeout`, so the exact tick count reached (and so
+  // exactly which tiles a tribe owns when sampled) depends on host load at
+  // the time, not just the seed. Tolerance 40 stays comfortably below a
+  // real border stroke's difference (see the nation case below: 68+ units
+  // on every channel) while covering that legitimate terrain variance.
+  const close = (a, b, tol = 40) => a.every((v, i) => Math.abs(v - b[i]) <= tol);
   check(
     "a tribe's border tile renders identically to its own interior tile (no border stroke)",
     close(result.tribeBorderPx, result.tribeInteriorPx),
