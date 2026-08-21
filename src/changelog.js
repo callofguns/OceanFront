@@ -2,7 +2,7 @@
 // main menu. CURRENT_VERSION drives the visible tag, bump it whenever a
 // new entry is added below. Newest first.
 
-export const CURRENT_VERSION = 'v2.5.0-beta';
+export const CURRENT_VERSION = 'v2.6.0-beta';
 
 /**
  * The roadmap, newest work first, shown as "Coming soon" above the release
@@ -20,6 +20,16 @@ export const UPCOMING = [
 ];
 
 export const CHANGELOG = [
+  {
+    version: 'v2.6.0-beta',
+    notes: [
+      'Nations now play a much more patient, decisive game: they hold back a growing army until it is genuinely substantial before picking a fight, then commit almost everything to it once they do, rather than trickling out a token force whenever the mood struck.',
+      'Nations actively hunt down tribes near their borders, sometimes striking several at once, instead of only occasionally bumping into one. Tribe land is also cheaper to take than a real rival\'s.',
+      'Nations now fight back hardest against whoever is currently invading them, even an enemy they would normally consider too strong to challenge.',
+      'Tribes are far more numerous now, filling out the map much more than before.',
+      'Fixed two nations attacking each other at the same time causing the border between them to flicker back and forth instead of settling. The stronger attack now properly absorbs the weaker one and pushes on with the difference.',
+    ],
+  },
   {
     version: 'v2.5.0-beta',
     notes: [
