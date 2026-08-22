@@ -427,6 +427,57 @@ rediscover them a second time.
   genuine all-AI match and asserting the invariant every tick) is the
   fastest way to notice if it broke -- the hand-painted cases alone missed
   a real violation that check caught on the first try.
+- **Sound and music are synthesized live via the Web Audio API -- there are
+  no audio files in this project at all, and that is a deliberate,
+  repeated precedent, not an oversight.** OpenFrontIO's own sound effects
+  are CC BY-SA 4.0 and its music is fully proprietary (fetched from a live
+  API, not even present in their repo) -- both technically importable to
+  some degree, but this project's standing rule (already applied to every
+  map and every mechanic ported so far) is to study OpenFrontIO's
+  *mechanic/shape* only, never its literal asset files. `src/sound.js`
+  ported the *shape* of their real `SoundEffectController`/`SoundManager`
+  (event-bus-driven triggers, a squared perceptual-gain taper curve, a
+  max-concurrent-voices cap with oldest-eviction, a per-effect minimum
+  re-trigger gap) without touching a single one of their actual sounds.
+  Three things worth not re-learning the hard way:
+  - **The generative music must consume `Math.random()`, never
+    `game.rng`.** The match's own RNG is seeded so "Restart Match"
+    reproduces the exact same world; pulling from that stream for chord
+    timing or bell picks would make a replay diverge. Verified by
+    requiring a post-hook `pacing-sweep.mjs` run to be byte-identical
+    (modulo the wall-clock timing column) to a pre-hook baseline -- if a
+    future change to `sound.js` ever needs `game.rng` for something, that
+    comparison is exactly what would catch a leak.
+  - **`exponentialRampToValueAtTime` throws on a target of exactly 0 and
+    does nothing useful ramping *from* 0.** Every envelope in `sound.js`
+    parks at a small floor (`0.0001`) first, ramps, and only calls
+    `setValueAtTime(0, ...)` at the very end, once the exponential ramp
+    has already landed near enough to it. Skipping the floor step is an
+    easy way to get a silently-uncaught `RangeError` deep inside an
+    `AudioParam` schedule.
+  - **`Game#signal()` is a fact emitter, not a decision-maker -- all
+    human-only gating lives in `sound.js`'s listener, never in `game.js`.**
+    The one deliberate exception is `Diplomacy#propose()`, which only
+    signals from inside its existing `if (to.isHuman)` block, since
+    AI-to-AI alliance offers fire constantly and would otherwise be pure
+    callback noise with no one ever gating on them downstream. Any new
+    hook site should default to signaling unconditionally and let
+    `SoundBoard#onGameEvent`'s switch decide what to do with it.
+  - **A headless test fixture that gives every "uninvolved" player zero
+    tiles has to remember the human counts as one of them.**
+    `tools/tests/sound-test.mjs`'s first draft parked every non-cast bot on
+    an isolated tile (`encirclement-test.mjs`'s own convention) but left
+    the human untouched at zero tiles, since no test in that file
+    intentionally used the human's own territory. `#checkEliminations()`
+    runs every 10 ticks and iterates `this.players` in id order --
+    human is id 0, so a human sitting at zero tiles gets "eliminated"
+    and hits `#endMatch(null)` *before* the loop ever reaches whichever
+    player the test actually cared about, flipping `game.state` to
+    `'over'` and silently no-op'ing every tick afterward (`tick()` bails
+    out unless `state === 'playing'`). The fix was parking the human like
+    every other unused player, not touching game.js -- but the failure
+    mode (a test that "does nothing" many ticks in, with no thrown error)
+    is worth recognizing quickly if it resurfaces in a different fixture.
 
 ## How to verify a change
 
@@ -770,3 +821,23 @@ Full details, including what each test actually checks, are in
   prior version to compare against; watch for edge cases around opening it
   during spawn selection or right as a match ends, which the automated
   suite covers but a human hasn't stress-tested yet.
+- **Sound and music (`src/sound.js`) are verified mechanically -- every
+  event fires the right sound to the right player, the taper curve is
+  real, nothing throws under a voice-cap burst -- but never by ear.** This
+  session cannot actually listen to what it built: every recipe's
+  peak/RMS/decay-shape was checked numerically via `renderOffline()`
+  (`tools/tests/sound-test.mjs`), and a few relative-intensity pairs the
+  design calls for (`betrayed` reading clearly more intense than
+  `alliance-broken`, `click` clearly quieter than `nuke-hit`) were
+  confirmed to land the right way round, but none of that substitutes for
+  a human's ear on whether the overall mix is pleasant, whether the SFX/
+  music balance at the default volumes (`SFX_VOLUME_DEFAULT=0.7`,
+  `MUSIC_VOLUME_DEFAULT=0.45`) actually feels right, or whether the
+  generative ambient music holds up over a real multi-minute match instead
+  of becoming repetitive or grating. If a specific sound reads wrong or
+  the mix needs rebalancing, the per-effect `SFX_MIX` trim table and the
+  two volume defaults in `config.js`'s sound section are the first levers,
+  not the oscillator recipes themselves. Also untested by a human: the
+  actual autoplay-unlock experience on iOS Safari specifically (this
+  project's PWA target), since Playwright's Chromium is the only browser
+  this session can drive.

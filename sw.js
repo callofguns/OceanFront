@@ -7,7 +7,7 @@
 // ones from storage -- it is not required for routine updates to propagate,
 // since those are picked up on the very next fetch regardless.
 
-const CACHE_VERSION = 'v7';
+const CACHE_VERSION = 'v8';
 const CACHE_NAME = `oceanfront-${CACHE_VERSION}`;
 
 const PRECACHE = [
@@ -37,6 +37,7 @@ const PRECACHE = [
   'src/player.js',
   'src/render.js',
   'src/rng.js',
+  'src/sound.js',
   'src/tribe.js',
   'src/ui.js',
   'icons/icon-192.png',

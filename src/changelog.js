@@ -10,7 +10,6 @@ export const CURRENT_VERSION = 'v2.7.1-beta';
  * attached: this is what is being worked towards, not a set of promises.
  */
 export const UPCOMING = [
-  'Sound and music',
   'Player profile panel',
   'Better UI',
   'Multiplayer',
