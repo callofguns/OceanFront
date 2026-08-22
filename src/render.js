@@ -8,6 +8,19 @@ import { OCEAN, BUILDINGS, NUKE_RADIUS } from './config.js';
 
 const FILL_ALPHA = 0.66;
 const BORDER_LIGHTEN = 0.55;
+// How far past "the whole map exactly fills the viewport" the player can
+// still scroll/pinch out, as a fraction of that fit-to-screen scale --
+// matches OpenFrontIO's own feel of the map shrinking to a small island
+// surrounded by open space rather than hard-stopping at the edges the
+// moment it fits. OpenFrontIO itself uses a fixed absolute scale floor
+// (0.2) against a default fit around 0.9, a similar ~1:4 ratio.
+const ZOOM_OUT_ROOM = 0.3;
+// Below this rendered pixel size, a name/troop label is skipped entirely
+// rather than drawn unreadably small -- also matches OpenFrontIO (its own
+// name shader culls below a screen-size threshold the same way). See
+// #drawLabels: this only does anything now that the label size below it is
+// allowed to actually shrink that far.
+const LABEL_CULL_PX = 9;
 // Matches styles.css's system font stack -- real San Francisco on macOS/iOS,
 // that platform's own equivalent everywhere else, so map labels read as the
 // same typeface as the surrounding DOM instead of a stray "Inter" that was
@@ -65,7 +78,12 @@ export class Renderer {
     this.viewW = w;
     this.viewH = h;
     this.minScale = Math.min(w / this.game.map.width, h / this.game.map.height);
-    if (this.camera.scale < this.minScale) this.camera.scale = this.minScale;
+    // The lowest scale scroll/pinch can reach -- looser than minScale (which
+    // stays "the map exactly fills the viewport", used by fitToScreen() and
+    // the post-spawn zoom-in) so the player can keep zooming out past that
+    // point and see the whole map shrink into open space.
+    this.minZoomScale = this.minScale * ZOOM_OUT_ROOM;
+    if (this.camera.scale < this.minZoomScale) this.camera.scale = this.minZoomScale;
     this.clampCamera();
   }
 
@@ -94,7 +112,7 @@ export class Renderer {
   zoomAt(sx, sy, factor) {
     const c = this.camera;
     const before = this.screenToWorld(sx, sy);
-    c.scale = Math.max(this.minScale, Math.min(24, c.scale * factor));
+    c.scale = Math.max(this.minZoomScale, Math.min(24, c.scale * factor));
     const after = this.screenToWorld(sx, sy);
     c.x += (after.x - before.x) * c.scale;
     c.y += (after.y - before.y) * c.scale;
@@ -385,8 +403,12 @@ export class Renderer {
       const s = this.worldToScreen(p.centroid.x, p.centroid.y);
       if (s.x < -80 || s.y < -40 || s.x > this.viewW + 80 || s.y > this.viewH + 40) continue;
 
-      const size = Math.max(10, Math.min(30, p.labelScale * this.camera.scale * 0.5));
-      if (size < 9) continue;
+      // No lower clamp here on purpose: matching OpenFrontIO, a name has to
+      // be allowed to actually shrink below LABEL_CULL_PX as the camera
+      // zooms out, or the cull right below can never trigger and names
+      // never disappear at all.
+      const size = Math.min(30, p.labelScale * this.camera.scale * 0.5);
+      if (size < LABEL_CULL_PX) continue;
 
       // Tribes read as background on the map too: a touch smaller, lighter
       // weight, and less than fully opaque, so a glance still reads which

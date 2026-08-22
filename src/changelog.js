@@ -2,7 +2,7 @@
 // main menu. CURRENT_VERSION drives the visible tag, bump it whenever a
 // new entry is added below. Newest first.
 
-export const CURRENT_VERSION = 'v2.6.0-beta';
+export const CURRENT_VERSION = 'v2.7.0-beta';
 
 /**
  * The roadmap, newest work first, shown as "Coming soon" above the release
@@ -10,7 +10,6 @@ export const CURRENT_VERSION = 'v2.6.0-beta';
  * attached: this is what is being worked towards, not a set of promises.
  */
 export const UPCOMING = [
-  'More hand-made maps',
   'Sound and music',
   'Player profile panel',
   'Better UI',
@@ -20,6 +19,15 @@ export const UPCOMING = [
 ];
 
 export const CHANGELOG = [
+  {
+    version: 'v2.7.0-beta',
+    notes: [
+      'Ten new hand-made maps: the six continents (Africa, Asia, Europe, North America, South America, Oceania), plus four original arena maps for something different — Labyrinth (a real maze), The Box (a symmetric four-way arena), Onion (concentric rings around a central stronghold), and Branching Paths (a fractal network of peninsulas). All pick from the same World row on the main menu.',
+      'Names and troop counts now fade away as you zoom out, instead of staying pinned to a readable size no matter how far back you pull. The map reads cleaner at a glance, and the biggest nations keep their names visible the longest.',
+      'You can now zoom out further than before, past the point where the whole map used to fill the screen, shrinking it down to see it as a small island in open water.',
+      'Fixed the installable/offline copy of the game missing some map files from its cache.',
+    ],
+  },
   {
     version: 'v2.6.0-beta',
     notes: [

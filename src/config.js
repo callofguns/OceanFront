@@ -2,6 +2,16 @@
 // adjusted without hunting through the simulation code.
 
 import { WORLD_MAP } from './maps/world.js';
+import { AFRICA_MAP } from './maps/africa.js';
+import { ASIA_MAP } from './maps/asia.js';
+import { EUROPE_MAP } from './maps/europe.js';
+import { NORTH_AMERICA_MAP } from './maps/north-america.js';
+import { SOUTH_AMERICA_MAP } from './maps/south-america.js';
+import { OCEANIA_MAP } from './maps/oceania.js';
+import { LABYRINTH_MAP } from './maps/labyrinth.js';
+import { THE_BOX_MAP } from './maps/the-box.js';
+import { ONION_MAP } from './maps/onion.js';
+import { BRANCHING_PATHS_MAP } from './maps/branching-paths.js';
 
 export const TICKS_PER_SECOND = 10;
 export const TICK_MS = 1000 / TICKS_PER_SECOND;
@@ -581,19 +591,37 @@ export const VICTORY_LAND_SHARE = 0.6;
  * are filled in for authored maps too, derived from the grid, so anything
  * reading a preset's dimensions works the same either way.
  */
+/** Turns a src/maps/*.js definition into a MAP_PRESETS entry -- every
+ *  authored map (World plus the six continents and four pattern maps
+ *  below) follows this exact shape, so this replaces re-typing it by hand
+ *  for each one. */
+function authoredPreset(map) {
+  return {
+    key: map.key,
+    label: map.label,
+    w: map.grid[0].length * map.scale,
+    h: map.grid.length * map.scale,
+    bots: map.bots,
+    tribes: TRIBE_TARGET_COUNT,
+    authored: map,
+  };
+}
+
 export const MAP_PRESETS = {
   small: { key: 'small', label: 'Small', w: 300, h: 190, bots: 8, tribes: TRIBE_TARGET_COUNT },
   medium: { key: 'medium', label: 'Medium', w: 420, h: 260, bots: 14, tribes: TRIBE_TARGET_COUNT },
   large: { key: 'large', label: 'Large', w: 560, h: 340, bots: 22, tribes: TRIBE_TARGET_COUNT },
-  world: {
-    key: 'world',
-    label: WORLD_MAP.label,
-    w: WORLD_MAP.grid[0].length * WORLD_MAP.scale,
-    h: WORLD_MAP.grid.length * WORLD_MAP.scale,
-    bots: WORLD_MAP.bots,
-    tribes: TRIBE_TARGET_COUNT,
-    authored: WORLD_MAP,
-  },
+  world: authoredPreset(WORLD_MAP),
+  africa: authoredPreset(AFRICA_MAP),
+  asia: authoredPreset(ASIA_MAP),
+  europe: authoredPreset(EUROPE_MAP),
+  northAmerica: authoredPreset(NORTH_AMERICA_MAP),
+  southAmerica: authoredPreset(SOUTH_AMERICA_MAP),
+  oceania: authoredPreset(OCEANIA_MAP),
+  labyrinth: authoredPreset(LABYRINTH_MAP),
+  theBox: authoredPreset(THE_BOX_MAP),
+  onion: authoredPreset(ONION_MAP),
+  branchingPaths: authoredPreset(BRANCHING_PATHS_MAP),
 };
 
 /**

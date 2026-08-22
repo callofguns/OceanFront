@@ -20,7 +20,7 @@ const BASE = `http://localhost:${PORT}`;
 
 // Headless first (fast, no server needed), then everything that drives a
 // real browser against the dev server.
-const HEADLESS = ['encirclement-test.mjs', 'ai-behavior-test.mjs', 'combat-cost-test.mjs', 'tribe-behavior-test.mjs', 'world-map-test.mjs', 'mutual-attack-test.mjs', 'nation-tribe-ai-test.mjs'];
+const HEADLESS = ['encirclement-test.mjs', 'ai-behavior-test.mjs', 'combat-cost-test.mjs', 'tribe-behavior-test.mjs', 'authored-maps-test.mjs', 'mutual-attack-test.mjs', 'nation-tribe-ai-test.mjs'];
 const BROWSER_TESTS = [
   'browsertest.mjs',
   'mobiletest.mjs',
@@ -33,6 +33,7 @@ const BROWSER_TESTS = [
   'keyboard-pan-test.mjs',
   'tribe-render-test.mjs',
   'pause-menu-test.mjs',
+  'zoom-and-labels-test.mjs',
 ];
 
 function run(script, env = {}) {

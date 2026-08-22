@@ -20,8 +20,10 @@ On `main` (or `Update-Testing`, staged for a later merge -- check which with
 `git log`). Latest version tag in-game is whatever `CURRENT_VERSION` says in
 `src/changelog.js` -- check there and with `git log -1` for the exact commit,
 rather than trusting a hash written here, since both move. As of this
-hand-off that's **v2.5.0-beta**, hand-made maps plus the World map (see the
-load-bearing lessons below). Whether any
+hand-off that's **v2.6.0-beta** on `main`, with ten more hand-authored maps
+(the six continents plus four original pattern/arena maps) merged into
+`Update-Testing` on top of it, not yet released under a bumped version (see
+the load-bearing lessons below). Whether any
 recent version has been cut as a GitHub release is worth asking the user
 rather than assuming (see below -- this session can't push tags itself, so
 there's no way to check from git alone).
@@ -389,9 +391,9 @@ rediscover them a second time.
   the world map, stranding the Danube, Volga and Nile together. Hand-fixing
   the grid turned into whack-a-mole, so `connectRiversToSea()` in
   `src/map.js` now guarantees the invariant for every map, and
-  `world-map-test.mjs` asserts it. Bodies of water the author drew as
-  enclosed still stay inland lakes -- only components holding a *carved
-  river* get joined up.
+  `authored-maps-test.mjs` asserts it on every authored map that carries a
+  river. Bodies of water the author drew as enclosed still stay inland
+  lakes -- only components holding a *carved river* get joined up.
 - **`labelOceans()` clears `oceanComponent` before filling.** It used to
   skip any tile already carrying an id, which is fine when it runs once but
   silently wrong on a second pass: newly carved water got fresh ids while
@@ -558,6 +560,165 @@ Full details, including what each test actually checks, are in
   continents come out, `AUTHORED_NOISE`/`_COARSE` for how crinkled the
   coastlines are, `AUTHORED_RELIEF` for shading variation, `RIVER_MEANDER`
   for how much rivers wander.
+- **Ten more hand-authored maps (six continents, four original pattern
+  maps) were added the same way World was, not copied from OpenFrontIO.**
+  OpenFrontIO's own map roster (118 maps, `Maps.gen.ts`) and its map
+  terrain data specifically (not just their code) are CC BY-SA 4.0 licensed
+  with required attribution -- researched directly against their actual
+  repo before deciding, same as always when OpenFrontIO comes up. Literally
+  importing their compiled map files would still be forking another
+  project's specific derived creative content wholesale, which is a
+  different kind of thing than every other OpenFrontIO round this project
+  has done (porting mechanics/formulas, never assets), and it would break
+  this project's own already-established precedent: World is documented
+  above as OceanFront's own hand-drawn interpretation, not a copy of
+  anything. This round is the same move repeated ten more times -- Africa,
+  Asia, Europe, North America, South America, Oceania (real, familiar
+  continent outlines, which are basic geographic fact, not anyone's
+  copyrightable expression) plus Labyrinth, The Box, Onion, Branching Paths
+  (four original abstract arena designs, only in the *spirit* of
+  OpenFrontIO's "arcade" map category -- their actual pattern-map designs
+  were deliberately never looked at, for the same reason). All ten went
+  through a scratch procedural generator (not committed, scaffolding only)
+  rather than hand-typed ASCII art purely to make tens of thousands of grid
+  characters tractable and to iterate against the real numeric test bands
+  directly; the checked-in output (`src/maps/*.js`) is the same flat
+  `key/label/scale/bots/noiseSeed/grid` shape as `world.js`, wired into
+  `MAP_PRESETS` through a new `authoredPreset()` helper in `config.js` that
+  every authored map (World included) now goes through, instead of a
+  hand-typed block per map. `tools/tests/world-map-test.mjs` was
+  generalized into `tools/tests/authored-maps-test.mjs`, looping the exact
+  same checks over all 11 authored maps instead of duplicating the file.
+  - **Real bug caught by that verification, not by eyeballing a screenshot:
+    Labyrinth's maze corridors never actually connected any two rooms.**
+    `fillWallBetween`'s corridor-carving math wrote a single column/row
+    sitting at the near edge of the wall gap and stopped there -- it never
+    reached the far room, so every "corridor" was a dead-end stub and the
+    whole map was 100 sealed, disconnected one-room islands (confirmed by a
+    flood-fill: only 12 of 1215 land tiles were reachable from any single
+    room). The automated map checks didn't catch this on their own since
+    every room still individually had a valid plains spawn -- what actually
+    caught it was the pacing sweep every new preset gets run through:
+    Labyrinth stalled 3/3 seeds at the full 30-minute cap (every other
+    preset resolves in 5-9 minutes), because with no land path between
+    rooms at all, bots could only ever fight by naval attack, which is rare
+    enough that games just never resolved. Fixed by making the corridor
+    carve span the wall's *full* thickness in the direction of travel
+    instead of one edge column, at a passage width narrower than a room
+    (2 of 3 cells) so corridors still read as corridors rather than merged
+    rooms; re-verified both structurally (a full flood-fill from one room
+    now reaches every land tile) and dynamically (0/5 stalls afterward,
+    same 5-9 minute resolution time as everything else). Worth remembering
+    for any future maze/corridor-style authored map: connectivity has to be
+    checked with an actual flood-fill or a real match, not inferred from
+    "every room has a spawn" or a small rendered thumbnail -- the broken
+    version looked like uniformly-spaced islands in a preview PNG, which
+    reads as a plausible art style at a glance rather than an obvious bug.
+  - Widening that corridor fix to span the full wall thickness also opens
+    most of the wall lattice at once, since a full spanning tree touches
+    nearly every room -- that leaves whatever water isn't carved scattered
+    into several small sealed pockets rather than one connected moat. That
+    is correct for a maze's walls, not damage to route around: an early
+    attempt to force it back into one connected sea by flood-filling every
+    orphaned pocket into land pushed Labyrinth's land share to 62.9%, well
+    outside the 30-50% band every authored map is tuned to. Left as-is
+    instead (Labyrinth measures 7 disconnected water bodies), and the
+    generalized test's "not fragmented into many seas" check was scoped
+    back to only run on maps that carry a river -- it was only ever a proxy
+    for "a river didn't get stranded in its own sea" in the original
+    World-only test, not a universal invariant every authored map's water
+    has to satisfy, and promoting it to unconditional during the
+    generalization pass was a real overreach caught by this same map.
+- **Names now disappear when zoomed out, and scroll/pinch can zoom out past
+  the map fitting the viewport, both ported from OpenFrontIO's real client
+  source (`TransformHandler.ts`'s `onZoom`/`clampOffsets`, and the cull
+  branch in `name.vert.glsl`), not guessed at.** Two small, separate fixes
+  in `src/render.js`:
+  - **The name/troop-label cull check had been dead code since the very
+    first commit.** `#drawLabels` already computed `size` and already had
+    `if (size < 9) continue;` right below it, but `size` was wrapped in
+    `Math.max(10, ...)` one line above -- a floor sitting *above* the cull
+    threshold it was floored *before*, so `size` could structurally never
+    be less than 10 and the `< 9` branch could never fire, going all the
+    way back to the initial commit (`git log -L` on that line confirms it).
+    OpenFrontIO's own name shader does the equivalent computation
+    (world-space label size × current camera zoom = on-screen pixel size)
+    and culls below a threshold the same way -- OceanFront's own
+    `p.labelScale` (territory-bounding-box-derived) is already the same
+    shape as their `baseSize`, so this needed no new sizing system, just
+    removing the floor that made the existing cull unreachable.
+  - **Scroll/pinch could never zoom out past `minScale` (the scale at which
+    the whole map exactly fills the viewport)** -- every zoom call clamped
+    to `Math.max(this.minScale, ...)`, so the map could never render
+    smaller than the viewport no matter how far out you scrolled.
+    OpenFrontIO's `TransformHandler` floors zoom at a fixed absolute scale
+    (0.2) well below its own default fit (`centerAll(0.9)`), letting the
+    map shrink to a small island surrounded by open space. Ported as a
+    *separate*, looser floor (`minZoomScale = minScale * ZOOM_OUT_ROOM`,
+    `ZOOM_OUT_ROOM = 0.3`) rather than redefining `minScale` itself, since
+    `minScale` is still the right value for `fitToScreen()` (initial framing)
+    and the post-spawn zoom-in in `ui.js` (`minScale * 1.8`, so the new
+    homeland isn't stranded under a HUD panel) -- both need the true "fits
+    exactly" scale, not the loosened floor. `clampCamera()` needed no
+    changes at all: it already centers each axis independently whenever the
+    scaled map is smaller than the viewport on that axis (`if (mw <= viewW)
+    center`), which was already fully correct, just unreachable on both
+    axes simultaneously until `minZoomScale` could go below `minScale`.
+  - Screenshotted a real mid-match state (several nations grown large):
+    zoomed out to the new floor, the map shrinks to a small island in the
+    dark background exactly like OpenFrontIO, and the label cull reads as
+    genuinely graceful rather than all-or-nothing -- the biggest nations
+    (Silvermarch, Brakkir, Kesh Dominion, Duskvale) keep visible names at
+    that scale while the smaller ones (Palladia, Belmara, Meridia, Solmara,
+    Norhaven) fade first, matching how a bigger `labelScale` keeps a name
+    above the cull threshold longer as the shared `camera.scale` term
+    shrinks for everyone at once.
+  - `tools/tests/zoom-and-labels-test.mjs` checks both mechanically: real
+    `renderer.zoomAt()` calls (the same call the wheel handler makes)
+    clamp at `minZoomScale` with the map padded and centered on *both*
+    axes, not one; and the label cull is checked by holding camera
+    position/scale fixed and only varying the test player's `labelScale`
+    between two `renderer.ctx.getImageData` reads of the same screen
+    region, so the underlying terrain pixels can't be the thing that
+    changed -- confirming the cull is live every frame (toggling back down
+    hides the name again), not a one-shot flag.
+- **GitHub Pages hosts `main` and `Update-Testing` at once, from a single
+  workflow (`.github/workflows/pages.yml`) rather than pointing Pages'
+  branch-source setting at either branch directly** -- a repo only has one
+  Pages deployment target, so hosting two branches means assembling them
+  into one artifact: `main` at the site root
+  (`https://callofguns.github.io/OceanFront/`), `Update-Testing` nested
+  under `/update-testing/`, a live staging copy for playtesting a batch of
+  merged work before an explicit "push to main" promotes it. Confirmed safe
+  to nest a whole second copy of the app under a subpath with zero code
+  changes: every asset reference in the project (`index.html`,
+  `manifest.json`'s `start_url`/`scope`, `sw.js`'s registration path and its
+  own `PRECACHE` list, every `<script>`/`<link>`) was already relative with
+  no leading `/`, so the same files resolve correctly regardless of how deep
+  they're served from.
+  - The workflow checks out **both** branches fresh on every run, regardless
+    of which one's push triggered it -- otherwise whichever branch didn't
+    trigger the run would keep shipping whatever was live the last time a
+    push landed on *it*, going stale between the other branch's pushes.
+  - It only actually fires on a push to `main` once this workflow file
+    exists on `main` itself (Actions runs the trigger-branch's own copy of
+    the workflow) -- not yet true the moment this ships, since `main` only
+    updates on an explicit "push to main". Until then, it still deploys
+    both branches' *current* content on every `Update-Testing` push (which
+    happens far more often) and via the manual "Run workflow" button /
+    `run_workflow` MCP call, so this isn't blocking day to day; it'll start
+    firing on `main` pushes too the first time this file rides along with a
+    normal Update-Testing -> main merge, with no special-casing needed.
+  - Requires a one-time step only a repo admin can do, not scriptable from
+    here: Settings -> Pages -> Source -> "GitHub Actions" (`.nojekyll` at
+    the repo root, added early in the project, already skips the default
+    Jekyll build either way).
+  - Also fixed while looking at this: `sw.js`'s offline `PRECACHE` list had
+    two pre-existing gaps -- `src/changelog.js` was never listed at all, and
+    it still only listed `src/maps/world.js`, missing all ten authored maps
+    from the last two rounds. An installed/offline player was missing
+    content a normal online visit would have. Both added; `CACHE_VERSION`
+    bumped so existing installs drop the incomplete cache on next launch.
 - **The v2.3.0-beta visual redesign and pause menu are verified by the
   automated suite and a manual desktop/375px pass, not yet by a human
   playing a real match on a real phone.** The design tokens (`styles.css`'s

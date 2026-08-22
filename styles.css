@@ -758,7 +758,12 @@ input[type="range"]::-moz-range-thumb {
    before (every test that clicks #size-picker .choice:nth-child(1) for
    Small still works untouched), just given real card weight instead of a
    plain button row. */
-.size-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-3); }
+/* auto-fit/minmax instead of a fixed column count: this grid now holds 14
+   presets (3 procedural sizes, World, six continents, four pattern maps)
+   instead of the original 4, and a fixed repeat(4, 1fr) would wrap that
+   into an oddly uneven last row. minmax keeps each card at a sane minimum
+   width and lets the row fill with however many fit. */
+.size-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: var(--space-3); }
 .size-card {
   flex: none;
   display: flex;
