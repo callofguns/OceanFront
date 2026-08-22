@@ -629,6 +629,59 @@ Full details, including what each test actually checks, are in
     World-only test, not a universal invariant every authored map's water
     has to satisfy, and promoting it to unconditional during the
     generalization pass was a real overreach caught by this same map.
+- **Names now disappear when zoomed out, and scroll/pinch can zoom out past
+  the map fitting the viewport, both ported from OpenFrontIO's real client
+  source (`TransformHandler.ts`'s `onZoom`/`clampOffsets`, and the cull
+  branch in `name.vert.glsl`), not guessed at.** Two small, separate fixes
+  in `src/render.js`:
+  - **The name/troop-label cull check had been dead code since the very
+    first commit.** `#drawLabels` already computed `size` and already had
+    `if (size < 9) continue;` right below it, but `size` was wrapped in
+    `Math.max(10, ...)` one line above -- a floor sitting *above* the cull
+    threshold it was floored *before*, so `size` could structurally never
+    be less than 10 and the `< 9` branch could never fire, going all the
+    way back to the initial commit (`git log -L` on that line confirms it).
+    OpenFrontIO's own name shader does the equivalent computation
+    (world-space label size × current camera zoom = on-screen pixel size)
+    and culls below a threshold the same way -- OceanFront's own
+    `p.labelScale` (territory-bounding-box-derived) is already the same
+    shape as their `baseSize`, so this needed no new sizing system, just
+    removing the floor that made the existing cull unreachable.
+  - **Scroll/pinch could never zoom out past `minScale` (the scale at which
+    the whole map exactly fills the viewport)** -- every zoom call clamped
+    to `Math.max(this.minScale, ...)`, so the map could never render
+    smaller than the viewport no matter how far out you scrolled.
+    OpenFrontIO's `TransformHandler` floors zoom at a fixed absolute scale
+    (0.2) well below its own default fit (`centerAll(0.9)`), letting the
+    map shrink to a small island surrounded by open space. Ported as a
+    *separate*, looser floor (`minZoomScale = minScale * ZOOM_OUT_ROOM`,
+    `ZOOM_OUT_ROOM = 0.3`) rather than redefining `minScale` itself, since
+    `minScale` is still the right value for `fitToScreen()` (initial framing)
+    and the post-spawn zoom-in in `ui.js` (`minScale * 1.8`, so the new
+    homeland isn't stranded under a HUD panel) -- both need the true "fits
+    exactly" scale, not the loosened floor. `clampCamera()` needed no
+    changes at all: it already centers each axis independently whenever the
+    scaled map is smaller than the viewport on that axis (`if (mw <= viewW)
+    center`), which was already fully correct, just unreachable on both
+    axes simultaneously until `minZoomScale` could go below `minScale`.
+  - Screenshotted a real mid-match state (several nations grown large):
+    zoomed out to the new floor, the map shrinks to a small island in the
+    dark background exactly like OpenFrontIO, and the label cull reads as
+    genuinely graceful rather than all-or-nothing -- the biggest nations
+    (Silvermarch, Brakkir, Kesh Dominion, Duskvale) keep visible names at
+    that scale while the smaller ones (Palladia, Belmara, Meridia, Solmara,
+    Norhaven) fade first, matching how a bigger `labelScale` keeps a name
+    above the cull threshold longer as the shared `camera.scale` term
+    shrinks for everyone at once.
+  - `tools/tests/zoom-and-labels-test.mjs` checks both mechanically: real
+    `renderer.zoomAt()` calls (the same call the wheel handler makes)
+    clamp at `minZoomScale` with the map padded and centered on *both*
+    axes, not one; and the label cull is checked by holding camera
+    position/scale fixed and only varying the test player's `labelScale`
+    between two `renderer.ctx.getImageData` reads of the same screen
+    region, so the underlying terrain pixels can't be the thing that
+    changed -- confirming the cull is live every frame (toggling back down
+    hides the name again), not a one-shot flag.
 - **The v2.3.0-beta visual redesign and pause menu are verified by the
   automated suite and a manual desktop/375px pass, not yet by a human
   playing a real match on a real phone.** The design tokens (`styles.css`'s
