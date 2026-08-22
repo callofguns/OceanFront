@@ -34,6 +34,7 @@ const BROWSER_TESTS = [
   'tribe-render-test.mjs',
   'pause-menu-test.mjs',
   'zoom-and-labels-test.mjs',
+  'sound-test.mjs',
 ];
 
 function run(script, env = {}) {
