@@ -1,0 +1,74 @@
+name: Deploy Pages (main + Update-Testing)
+
+# Publishes both branches to the same GitHub Pages site at once: main at the
+# site root, Update-Testing nested under /update-testing/ -- a live staging
+# copy for playtesting a batch of merged work before it's promoted to main,
+# without waiting for a release.
+#
+# Every run checks out BOTH branches fresh and redeploys the combined site,
+# regardless of which branch's push triggered it -- so the branch that
+# *didn't* trigger the run still ships its current content, not whatever was
+# live the last time a push landed on it.
+#
+# One-time setup only a repo admin can do (nothing here can do it for you):
+#   Settings -> Pages -> Build and deployment -> Source -> "GitHub Actions".
+# Until that's set, this workflow's deploy step fails with a clear error.
+#
+# This file only runs a push-to-main trigger once it exists ON main -- until
+# then it deploys on every Update-Testing push (which also re-checks out
+# main's current content, so main's slice of the site doesn't go stale
+# between those pushes) and via the manual "Run workflow" button below.
+
+on:
+  push:
+    branches: [main, Update-Testing]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Only one Pages deployment at a time; let a newer push supersede an
+# in-flight older one rather than queuing behind it.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Check out main (site root)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: site
+
+      - name: Check out Update-Testing (nested under /update-testing/)
+        uses: actions/checkout@v4
+        with:
+          ref: Update-Testing
+          path: site/update-testing
+
+      # Dev/test-only files aren't part of the shipped app (zero runtime
+      # dependencies -- see HANDOFF.md) and have no reason to be published
+      # at a public URL; strip them from both copies before upload.
+      - name: Strip dev-only files from both copies
+        run: |
+          for dir in site site/update-testing; do
+            rm -rf "$dir/.git" "$dir/node_modules" "$dir/.github" "$dir/.claude" "$dir/tools" \
+              "$dir/package.json" "$dir/package-lock.json" "$dir/server.js"
+          done
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
