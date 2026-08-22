@@ -136,6 +136,13 @@ export class Game {
     this.missiles = [];
     this.effects = [];
     this.events = [];
+    /** Presentation hook for "something happened" -- set by sound.js via
+     *  SoundBoard#bind(), left null otherwise. Mirrors the log()/
+     *  pushEffect() pattern: Game only ever emits facts through signal(),
+     *  never decides what is worth a sound. Every headless test and
+     *  tools/simulate.js import this module undecorated, so this must stay
+     *  a plain nullable field, never something that changes behavior. */
+    this.onEvent = null;
     /** Active sea trade links, rebuilt periodically for income and display. */
     this.tradeRoutes = [];
 
@@ -839,6 +846,7 @@ export class Game {
 
     const loot = spoils >= 1 ? `, seizing ${Math.round(spoils).toLocaleString()} gold` : '';
     this.log(`${conqueror.name} surrounded and annexed ${victim.name}${loot}.`, conqueror.color);
+    this.signal('annexed', { conquerorId: conqueror.id, victimId: victim.id });
     if (victim.isHuman) this.#endMatch(null);
   }
 
@@ -1017,6 +1025,7 @@ export class Game {
     player.gold -= NUKE_COST;
     this.missiles.push(new Missile(player.id, silo.tile, targetTile, this.map));
     this.log(`${player.name} launched a missile.`, player.color);
+    this.signal('nuke-launch', { playerId: player.id });
     return { ok: true };
   }
 
@@ -1037,6 +1046,7 @@ export class Game {
           m.done = true;
           this.pushEffect('intercept', m.x, m.y, 7);
           this.log(`${p.name} intercepted an incoming missile.`, p.color);
+          this.signal('intercept', { playerId: p.id, x: m.x, y: m.y });
           return;
         }
       }
@@ -1086,6 +1096,7 @@ export class Game {
     }
 
     this.pushEffect('nuke', cx, cy, NUKE_RADIUS);
+    this.signal('nuke-hit', { x: cx, y: cy });
     this.dirty = true;
     const victim = [...lossByPlayer.entries()].sort((a, b) => b[1] - a[1])[0];
     if (victim) {
@@ -1122,6 +1133,7 @@ export class Game {
     player.buildingCounts[key]++;
     this.buildingAt.set(tile, b);
     this.dirty = true;
+    this.signal('build', { key, playerId: player.id });
     return { ok: true, building: b };
   }
 
@@ -1158,6 +1170,19 @@ export class Game {
   log(text, color = '#cfd8e3') {
     this.events.unshift({ text, color, tick: this.tickCount });
     if (this.events.length > 40) this.events.pop();
+  }
+
+  /** Emits a raw fact for whatever is listening (sound.js, if bound) to
+   *  decide what to do with -- human-only gating and every other policy
+   *  decision lives entirely in the listener, never here. A broken listener
+   *  must never stop a match, hence the try/catch. */
+  signal(type, data) {
+    if (!this.onEvent) return;
+    try {
+      this.onEvent(type, data);
+    } catch {
+      /* a presentation-layer failure is never allowed to break the sim */
+    }
   }
 
   tick() {
@@ -1223,6 +1248,10 @@ export class Game {
         ? ` ${killer.name} carried off ${Math.round(spoils).toLocaleString()} gold.`
         : '';
       this.log(`${p.name} has been wiped off the map.${loot}`, p.color);
+      // killerId is -1 for a nuke-kill (land reverts to NEUTRAL, nobody was
+      // standing there to conquer it) -- never a real player id, so a
+      // listener gating on it declines the reward sound correctly.
+      this.signal('eliminated', { killerId: killer?.id ?? -1, victimId: p.id });
       if (p.isHuman) this.#endMatch(null);
     }
   }
