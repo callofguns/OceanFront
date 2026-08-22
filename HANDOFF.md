@@ -20,13 +20,13 @@ On `main` (or `Update-Testing`, staged for a later merge -- check which with
 `git log`). Latest version tag in-game is whatever `CURRENT_VERSION` says in
 `src/changelog.js` -- check there and with `git log -1` for the exact commit,
 rather than trusting a hash written here, since both move. As of this
-hand-off that's **v2.6.0-beta** on `main`, with ten more hand-authored maps
-(the six continents plus four original pattern/arena maps) merged into
-`Update-Testing` on top of it, not yet released under a bumped version (see
-the load-bearing lessons below). Whether any
-recent version has been cut as a GitHub release is worth asking the user
-rather than assuming (see below -- this session can't push tags itself, so
-there's no way to check from git alone).
+hand-off that's **v2.7.1-beta** on `main`, with sound and music (`src/sound.js`
+-- every effect and the ambient background music synthesized live via the
+Web Audio API, zero audio files, see the load-bearing lessons below) merged
+into `Update-Testing` on top of it, not yet released under a bumped
+version. Whether any recent version has been cut as a GitHub release is
+worth asking the user rather than assuming (see below -- this session can't
+push tags itself, so there's no way to check from git alone).
 
 ## Standing workflow rules
 
