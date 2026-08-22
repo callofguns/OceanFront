@@ -13,14 +13,22 @@ import {
   DIFFICULTIES,
   DEFAULT_DIFFICULTY,
   KEYBOARD_PAN_SPEED,
+  SFX_VOLUME_DEFAULT,
+  MUSIC_VOLUME_DEFAULT,
 } from './config.js';
 import { formatShort } from './render.js';
 import { CURRENT_VERSION, CHANGELOG, UPCOMING } from './changelog.js';
+import { SoundBoard } from './sound.js';
 
 const HUD_INTERVAL_MS = 120;
 const DRAG_THRESHOLD = 4;
 /** How often the leaderboard is allowed to re-sort itself. */
 const REORDER_INTERVAL_MS = 1000;
+/** Debounce window for persisting a setting changed via a live control (a
+ *  pause-menu slider) rather than the Start button -- long enough to not
+ *  write to localStorage on every input event of a drag, short enough that
+ *  closing the tab a moment later doesn't lose the change. */
+const SETTINGS_SAVE_DEBOUNCE_MS = 250;
 
 const $ = (id) => document.getElementById(id);
 
@@ -53,7 +61,21 @@ export class UI {
       color: PLAYER_COLORS[0],
       preset: 'medium',
       difficulty: DEFAULT_DIFFICULTY,
+      sfxVolume: SFX_VOLUME_DEFAULT,
+      musicVolume: MUSIC_VOLUME_DEFAULT,
+      muted: false,
     };
+
+    // Constructed before #restoreSettings() so the sound.js module has
+    // parsed and a board exists regardless of what's in localStorage --
+    // it builds no AudioContext yet (browsers block that before a user
+    // gesture), just holds settings until unlock() is called from Start.
+    this.sound = new SoundBoard({
+      sfxVolume: this.settings.sfxVolume,
+      musicVolume: this.settings.musicVolume,
+      muted: this.settings.muted,
+    });
+    this._saveSettingsTimer = null;
 
     this.keys = new Set();
     this.lastHudAt = 0;
@@ -80,10 +102,18 @@ export class UI {
     this.lastReorderAt = 0;
 
     this.#restoreSettings();
+    // Reflect whatever #restoreSettings just pulled from localStorage onto
+    // the board that was built with plain defaults above -- unlock() has
+    // not run yet, so this only updates stored volume state, never touches
+    // an AudioContext.
+    this.sound.setSfxVolume(this.settings.sfxVolume);
+    this.sound.setMusicVolume(this.settings.musicVolume);
+    this.sound.setMuted(this.settings.muted);
     this.#buildStartScreen();
     this.#buildChangelog();
     this.#buildHelpModal();
     this.#buildPauseMenu();
+    this.#buildSoundControls();
     this.#bindGlobalInput();
     this.#bindMobileChrome();
     this.#bindInstallPrompt();
@@ -132,6 +162,13 @@ export class UI {
       if (PLAYER_COLORS.includes(saved.color)) this.settings.color = saved.color;
       if (MAP_PRESETS[saved.preset]) this.settings.preset = saved.preset;
       if (DIFFICULTIES[saved.difficulty]) this.settings.difficulty = saved.difficulty;
+      if (typeof saved.sfxVolume === 'number' && saved.sfxVolume >= 0 && saved.sfxVolume <= 1) {
+        this.settings.sfxVolume = saved.sfxVolume;
+      }
+      if (typeof saved.musicVolume === 'number' && saved.musicVolume >= 0 && saved.musicVolume <= 1) {
+        this.settings.musicVolume = saved.musicVolume;
+      }
+      if (typeof saved.muted === 'boolean') this.settings.muted = saved.muted;
     } catch {
       /* corrupted or unavailable storage is not worth surfacing */
     }
@@ -143,6 +180,15 @@ export class UI {
     } catch {
       /* private mode -- fine, settings just will not persist */
     }
+  }
+
+  /** #saveSettings() otherwise has exactly one call site -- the Start
+   *  button -- so a volume dragged in the pause menu mid-match would never
+   *  reach localStorage under the plain pattern above. Every live control
+   *  (the sound sliders, the mute button) routes through this instead. */
+  #saveSettingsSoon() {
+    clearTimeout(this._saveSettingsTimer);
+    this._saveSettingsTimer = setTimeout(() => this.#saveSettings(), SETTINGS_SAVE_DEBOUNCE_MS);
   }
 
   #buildStartScreen() {
@@ -240,6 +286,11 @@ export class UI {
     seedInput.value = String(Math.floor(Math.random() * 1_000_000));
 
     $('btn-start').addEventListener('click', () => {
+      // A real click handler is the one place the browser's autoplay
+      // policy actually permits building an AudioContext -- do it first,
+      // synchronously, inside the gesture (unlock() is idempotent, so a
+      // Restart Match reaching #btn-start again is harmless).
+      this.sound.unlock();
       const name = (nameInput.value || 'Player').trim().slice(0, 16) || 'Player';
       this.settings.name = name;
       this.#saveSettings();
@@ -268,6 +319,7 @@ export class UI {
    *  calling it there too would be a harmless no-op (main.js's game/renderer
    *  are still valid until a new one replaces them via onStart). */
   #returnToMenu() {
+    this.sound.stopMusic();
     this.onExit?.();
     // main.js resets its own speed variable to 1x on the next onStart, but
     // never touches the speed buttons themselves -- do it here so a match
@@ -344,6 +396,69 @@ export class UI {
     });
   }
 
+  /** Sound section of the pause menu: two volume sliders and a mute button,
+   *  found by `data-volume`/`data-mute` attribute rather than a fixed id so
+   *  a second copy of the same markup (e.g. on the start screen, someday)
+   *  is wired for free. Also suspends/resumes the audio context when the
+   *  tab is hidden/shown, so a backgrounded tab doesn't keep droning. */
+  #buildSoundControls() {
+    for (const el of document.querySelectorAll('[data-volume]')) {
+      el.addEventListener('input', () => this.#onVolumeInput(el));
+    }
+    for (const btn of document.querySelectorAll('[data-mute]')) {
+      btn.addEventListener('click', () => this.#toggleMute());
+    }
+    this.#syncSoundUi();
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) this.sound.suspend();
+      else this.sound.resume();
+    });
+  }
+
+  #onVolumeInput(el) {
+    const kind = el.dataset.volume;
+    const v = Number(el.value) / 100;
+    if (kind === 'music') {
+      this.settings.musicVolume = v;
+      this.sound.setMusicVolume(v);
+    } else {
+      this.settings.sfxVolume = v;
+      this.sound.setSfxVolume(v);
+    }
+    const label = el.closest('.slider')?.querySelector('.slider-head b');
+    if (label) label.textContent = `${el.value}%`;
+    this.#saveSettingsSoon();
+  }
+
+  #toggleMute() {
+    this.settings.muted = !this.settings.muted;
+    this.sound.setMuted(this.settings.muted);
+    this.#syncSoundUi();
+    this.#saveSettingsSoon();
+  }
+
+  /** Reflects settings.{sfxVolume,musicVolume,muted} onto every matching
+   *  control. Called once at startup and after anything (the mute hotkey,
+   *  a slider) changes those settings out from under the DOM. */
+  #syncSoundUi() {
+    for (const el of document.querySelectorAll('[data-volume]')) {
+      const kind = el.dataset.volume;
+      const value = kind === 'music' ? this.settings.musicVolume : this.settings.sfxVolume;
+      const pct = Math.round(value * 100);
+      el.value = String(pct);
+      const label = el.closest('.slider')?.querySelector('.slider-head b');
+      if (label) label.textContent = `${pct}%`;
+    }
+    for (const btn of document.querySelectorAll('[data-mute]')) {
+      btn.classList.toggle('is-active', this.settings.muted);
+      const icon = btn.querySelector('.icon');
+      const title = btn.querySelector('.title');
+      if (icon) icon.textContent = this.settings.muted ? '🔇' : '🔊';
+      if (title) title.textContent = this.settings.muted ? 'Unmute sound' : 'Mute sound';
+    }
+  }
+
   /** Small version tag at the foot of the main menu; opens the release
    *  history as a popup, on both desktop and mobile -- the same `.overlay`/
    *  `.dialog` pattern the start/end screens already use, not the mobile
@@ -401,6 +516,12 @@ export class UI {
     this.state.buildMode = null;
     this.state.nukeMode = false;
 
+    // Rebinding on every attach (not just the first) matters for Restart
+    // Match / Play again -- bind() replaces the previous game's onEvent
+    // with this one's, so a stale reference to the old Game never lingers.
+    this.sound.bind(game);
+    this.sound.startMusic();
+
     // A new match means new nations, so the reused rows from the last one are
     // stale -- drop them and let them be recreated on the next refresh.
     this.lbRows.clear();
@@ -456,7 +577,10 @@ export class UI {
       cost.className = 'cost';
 
       btn.append(icon, body, cost);
-      btn.addEventListener('click', () => this.#toggleBuildMode(key));
+      btn.addEventListener('click', () => {
+        this.sound.play('click');
+        this.#toggleBuildMode(key);
+      });
       list.appendChild(btn);
 
       this.buildButtons[key] = { btn, cost };
@@ -470,7 +594,10 @@ export class UI {
       $('attack-ratio-value').textContent = `${attack.value}%`;
     });
 
-    $('btn-nuke').addEventListener('click', () => this.#toggleNukeMode());
+    $('btn-nuke').addEventListener('click', () => {
+      this.sound.play('click');
+      this.#toggleNukeMode();
+    });
     $('btn-retreat').addEventListener('click', () => {
       const back = this.game.cancelAttacks(this.game.human);
       this.toast(back > 0 ? `${formatShort(back)} troops recalled.` : 'No attacks under way.');
@@ -761,6 +888,7 @@ export class UI {
         this.#toggleBuildMode(BUILDING_ORDER[slot - 1]);
       }
       if (e.key.toLowerCase() === 'n' && this.game) this.#toggleNukeMode();
+      if (e.key.toLowerCase() === 'm') this.#toggleMute();
     });
 
     window.addEventListener('keyup', (e) => this.keys.delete(e.key.toLowerCase()));
@@ -1262,6 +1390,8 @@ export class UI {
   showEndScreen(game) {
     const human = game.human;
     const won = game.winner === human;
+    this.sound.stopMusic();
+    this.sound.play(won ? 'victory' : 'defeat');
     $('end-title').textContent = won ? '🏆 Victory' : game.winner ? 'Defeat' : 'Eliminated';
     $('end-body').textContent = won
       ? 'You hold the world. The oceans are yours.'
