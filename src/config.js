@@ -288,13 +288,6 @@ export const TRIBE_ATTACK_COMMIT = 0.5;
  *  tribe, so this matches a nation's own neutral-grab commit. */
 export const TRIBE_NEUTRAL_COMMIT = 0.55;
 
-/** Chance a bordering full nation (or the human) is skipped over in favour
- *  of continuing the search for a softer target. Tribes mildly prefer
- *  picking on each other, but will still fight a nation or the player
- *  directly -- there is no difficulty-based leniency toward the human
- *  here, unlike nations. */
-export const TRIBE_SERIOUS_SKIP_CHANCE = 0.5;
-
 /** Chance a bordering known traitor gets attacked on sight, before the
  *  ordinary shuffle. */
 export const TRIBE_TRAITOR_ATTACK_CHANCE = 1 / 3;

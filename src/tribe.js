@@ -1,9 +1,12 @@
 // Tribes: the game's second, much weaker AI archetype. A tribe is a small,
 // lazy band that grabs open land early so nobody gets a free unclaimed-land
-// walkover, signs any pact it's offered, tears down anything it captures,
-// and picks fights it has no business picking. It never builds, never
-// nukes, never proposes a pact, never betrays one, and is never scaled by
-// the match's difficulty setting -- see the tribes block in src/config.js.
+// walkover, signs any pact it's offered, and tears down anything it
+// captures. It never attacks a real player -- a nation or the human --
+// whether by land or by sea, only ever another tribe or open land, so it
+// stays background scenery rather than a threat: pure easy pickings for
+// whoever finds one. It never builds, never nukes, never proposes a pact,
+// never betrays one, and is never scaled by the match's difficulty setting
+// -- see the tribes block in src/config.js.
 
 import { shuffle } from './rng.js';
 import {
@@ -13,7 +16,6 @@ import {
   TRIBE_TRIGGER_RANGE,
   TRIBE_ATTACK_COMMIT,
   TRIBE_NEUTRAL_COMMIT,
-  TRIBE_SERIOUS_SKIP_CHANCE,
   TRIBE_TRAITOR_ATTACK_CHANCE,
   TRIBE_TRAITOR_THRESHOLD,
   TRIBE_BOAT_CHANCE,
@@ -116,11 +118,16 @@ export class TribeController {
     if (game.attacksBy(p.id).length > 0) return;
     if (p.fillRatio < this.triggerRatio) return;
 
+    // Never a real player -- a nation or the human -- only ever another
+    // tribe. That's the whole point: a tribe is background scenery, not a
+    // threat, so it can't be the thing that ends your game.
     const hostiles = [...border.contact.keys()].filter(
-      (id) => game.players[id].alive && !p.allies.has(id)
+      (id) => game.players[id].alive && !p.allies.has(id) && game.players[id].isTribe
     );
 
-    // 1. Hit back at whoever is invading us.
+    // 1. Hit back at whoever is invading us (only ever another tribe, per
+    //    the filter above -- a nation or the human attacking a tribe just
+    //    goes unanswered).
     for (const atk of game.attacksOn(p.id)) {
       if (hostiles.includes(atk.attackerId)) {
         this.#strike(game, atk.attackerId);
@@ -128,7 +135,7 @@ export class TribeController {
       }
     }
 
-    // 2. A neighbour who has broken a pact is fair game.
+    // 2. A neighbouring tribe that has broken a pact is fair game.
     for (const id of hostiles) {
       if (
         game.players[id].traitorScore >= TRIBE_TRAITOR_THRESHOLD &&
@@ -139,16 +146,12 @@ export class TribeController {
       }
     }
 
-    // 3. Otherwise take the first viable neighbour in random order, mildly
-    //    preferring not to poke a full nation or the player. No
-    //    relative-strength gate at all -- a tribe will happily throw
-    //    itself at something far stronger. That absence is what makes it a
-    //    tribe, not a smaller nation.
+    // 3. Otherwise take the first viable neighbouring tribe in random
+    //    order. No relative-strength gate at all -- a tribe will happily
+    //    throw itself at something far stronger. That absence is what
+    //    makes it a tribe, not a smaller nation.
     const order = shuffle(this.rng, hostiles.slice());
     for (const id of order) {
-      const q = game.players[id];
-      const serious = q.isHuman || (q.ai && !q.isTribe);
-      if (serious && this.rng() < TRIBE_SERIOUS_SKIP_CHANCE) continue;
       if (this.#strike(game, id)) return;
     }
 
@@ -176,7 +179,11 @@ export class TribeController {
     for (let attempt = 0; attempt < 6; attempt++) {
       const tile = Math.floor(this.rng() * game.map.size);
       if (!game.map.isLand(tile)) continue;
-      if (game.owner[tile] === p.id) continue;
+      const owner = game.owner[tile];
+      if (owner === p.id) continue;
+      // A boat landing on owned land is an attack same as any other -- only
+      // unclaimed tiles or another tribe's are fair game, matching #maybeAttack.
+      if (owner >= 0 && !game.players[owner].isTribe) continue;
       const home = game.map.idx(Math.round(p.centroid.x), Math.round(p.centroid.y));
       if (game.map.dist(tile, home) > game.boatRange(p)) continue;
       const res = game.launchBoat(p, tile, p.troops * TRIBE_BOAT_COMMIT);

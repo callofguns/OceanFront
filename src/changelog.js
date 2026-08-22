@@ -2,7 +2,7 @@
 // main menu. CURRENT_VERSION drives the visible tag, bump it whenever a
 // new entry is added below. Newest first.
 
-export const CURRENT_VERSION = 'v2.7.0-beta';
+export const CURRENT_VERSION = 'v2.7.1-beta';
 
 /**
  * The roadmap, newest work first, shown as "Coming soon" above the release
@@ -19,6 +19,13 @@ export const UPCOMING = [
 ];
 
 export const CHANGELOG = [
+  {
+    version: 'v2.7.1-beta',
+    notes: [
+      'Your own name tag now stays visible for much longer than everyone else\'s as you zoom out — it only disappears once the map is fully zoomed all the way out, instead of fading away early like a rival\'s.',
+      'Tribes can no longer attack you or any nation, by land or by sea. They still fight each other and grab open land, but they\'re pure background scenery now — easy pickings, never a threat.',
+    ],
+  },
   {
     version: 'v2.7.0-beta',
     notes: [

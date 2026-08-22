@@ -719,6 +719,46 @@ Full details, including what each test actually checks, are in
     from the last two rounds. An installed/offline player was missing
     content a normal online visit would have. Both added; `CACHE_VERSION`
     bumped so existing installs drop the incomplete cache on next launch.
+- **The player's own name tag is now exempt from the zoom-out label cull
+  added last round, and tribes can no longer attack a real player at
+  all.** Two small, unrelated requests landed together.
+  - `#drawLabels` (`src/render.js`) branches on `p.isHuman`: every other
+    player still culls once its on-screen size drops below
+    `LABEL_CULL_PX`, but the human's own tag gets an old-style readable
+    floor (`Math.max(LABEL_CULL_PX + 1, ...)`) and a completely different
+    cull condition -- `camera.scale <= minZoomScale * 1.01`, i.e. only
+    once the camera is at the exact zoom-out floor from last round (the
+    whole map shrunk into view), not by its own computed size at all.
+    Screenshotted at a real mid-zoom level to confirm the feel: several AI
+    nations with *more* territory than the human already had their tags
+    culled while "Player" was still up, exactly the intended effect.
+  - `TribeController#maybeAttack` (`src/tribe.js`) filters `hostiles` down
+    to `isTribe` targets before any of retaliation, traitor-punishing, or
+    the ordinary shuffle ever run, instead of the old
+    `TRIBE_SERIOUS_SKIP_CHANCE` (now removed from `config.js`) 50%
+    skip-chance toward a nation or the human -- a chance, not a rule, so a
+    tribe could still end up fighting a real rival before. `#tryNavalInvasion`
+    needed the same fix separately: a boat landing on someone's owned
+    coast is an attack too, and the old code only ever excluded the
+    tribe's *own* tiles, not a real player's -- it would happily invade a
+    nation by sea even though the equivalent land attack was blocked.
+  - This changes tribes' place in the ecosystem more than it might look:
+    since they never fight back against the nations already hunting them
+    (last round's aggression work), a full pacing-sweep after the change
+    shows tribes ending most matches nearly wiped out (0.4-2.0 of 100
+    alive, down from double digits before) -- expected and intended, not
+    a bug: they're now pure background scenery, easy pickings for whoever
+    finds one, never a threat. Zero stalls and healthy resolution times
+    (3-10min, matching prior baselines) across all 9 size x difficulty
+    combos confirm the drop doesn't destabilize pacing.
+  - `tribe-behavior-test.mjs` needed real changes throughout, not just new
+    cases: several existing tests used a plain (non-tribe) player as the
+    tribe's target and had to gain `isTribe: true` to keep testing what
+    they were actually testing (the missing relative-strength gate,
+    attack-sizing, the traitor branch) now that a real player is never a
+    candidate at all; the old "shyness toward a nation is a preference,
+    not a rule" section was rewritten into tests for the actual new hard
+    rule, including a naval-invasion case the old suite never covered.
 - **The v2.3.0-beta visual redesign and pause menu are verified by the
   automated suite and a manual desktop/375px pass, not yet by a human
   playing a real match on a real phone.** The design tokens (`styles.css`'s

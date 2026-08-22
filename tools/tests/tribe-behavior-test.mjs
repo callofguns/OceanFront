@@ -159,13 +159,14 @@ console.log('\n▸ After the first think, the trigger ratio is respected');
 }
 
 // ---------------------------------------------------------------------------
-console.log('\n▸ No relative-strength gate: attacks a rival far too strong for a nation to bother with');
+console.log('\n▸ No relative-strength gate: attacks a rival tribe far too strong for a nation to bother with');
 {
   const game = blankGame();
   const p = game.players[1];
   const giant = game.players[2];
   rect(game, 10, 10, 15, 15, p.id);       // 36 tiles
   rect(game, 16, 10, 60, 60, giant.id);   // huge, borders p directly
+  giant.isTribe = true; // a real player is never a candidate at all now (see above), so this has to be a tribe to test the missing viability gate
 
   // dummyRng (0.999) rolls triggerRatio near the top of TRIBE_TRIGGER_RANGE
   // (~0.6), so p's fillRatio needs real margin above that; giant's needs to
@@ -197,6 +198,7 @@ console.log('\n▸ Attack sizing matches the configured flat commit fractions');
   const rival = game.players[2];
   rect(game, 10, 10, 15, 15, p.id);
   rect(game, 16, 10, 20, 15, rival.id);
+  rival.isTribe = true; // a real player is never attacked at all now -- see the dedicated section below
 
   p.troops = 1000;
   rival.troops = 10;
@@ -350,7 +352,7 @@ console.log('\n▸ Game#demolish: direct validation');
 }
 
 // ---------------------------------------------------------------------------
-console.log('\n▸ Retaliation against an active attacker beats the ordinary shuffle');
+console.log('\n▸ Retaliation against an active attacker beats the ordinary shuffle -- but only against another tribe');
 {
   const game = blankGame();
   const p = game.players[1];
@@ -359,6 +361,8 @@ console.log('\n▸ Retaliation against an active attacker beats the ordinary shu
   rect(game, 10, 10, 20, 20, p.id);
   rect(game, 21, 10, 30, 20, attacker.id);
   rect(game, 10, 21, 20, 25, other.id);
+  attacker.isTribe = true;
+  other.isTribe = true;
 
   p.troops = p.maxTroops * 0.9; // comfortably above any TRIBE_TRIGGER_RANGE roll
   attacker.troops = 2000;
@@ -378,6 +382,30 @@ console.log('\n▸ Retaliation against an active attacker beats the ordinary shu
   check('p retaliates against its actual attacker, not the shuffle’s pick',
     attacks.length === 1 && attacks[0].targetId === attacker.id, `targetId=${attacks[0]?.targetId}`);
 }
+{
+  // Same shape, but the attacker is a real nation -- retaliation is an
+  // attack on a player like any other, so it never fires, even though p is
+  // actively under attack and nothing else is around to hit instead.
+  const game = blankGame();
+  const p = game.players[1];
+  const attacker = game.players[2];
+  rect(game, 10, 10, 20, 20, p.id);
+  rect(game, 21, 10, 30, 20, attacker.id);
+
+  p.troops = p.maxTroops * 0.9;
+  attacker.troops = 2000;
+
+  const inbound = game.launchAttack(attacker, p.id, 500);
+  check('setup: p is under attack from a nation', inbound !== null && game.attacksOn(p.id).length > 0);
+
+  p.ai = new TribeController(p, dummyRng);
+  p.ai.firstThink = false;
+  p.ai.cooldown = 0;
+  p.ai.update(game);
+
+  check('p does not retaliate against a nation, even while under attack',
+    game.attacksBy(p.id).length === 0);
+}
 
 // ---------------------------------------------------------------------------
 console.log('\n▸ A bordering traitor is attacked on a favorable roll, spared on an unfavorable one');
@@ -390,6 +418,8 @@ console.log('\n▸ A bordering traitor is attacked on a favorable roll, spared o
     rect(game, 10, 10, 20, 20, p.id);
     rect(game, 21, 10, 25, 20, traitor.id);
     rect(game, 10, 21, 20, 25, clean.id);
+    traitor.isTribe = true;
+    clean.isTribe = true;
 
     traitor.troops = 10;
     clean.troops = 10;
@@ -413,30 +443,51 @@ console.log('\n▸ A bordering traitor is attacked on a favorable roll, spared o
 }
 
 // ---------------------------------------------------------------------------
-console.log('\n▸ Shyness toward a full nation/human is a preference, not an absolute rule');
+console.log('\n▸ Never attacks a real player -- a nation or the human -- only ever another tribe');
 {
-  // Only neighbor is a nation -- must still attack it regardless of the roll.
+  // Only neighbor is a nation, and no neutral land or coast to fall back
+  // on -- must sit on its hands entirely, not attack anyway for lack of
+  // anything else to do.
   const game = blankGame();
   const p = game.players[1];
   const nation = game.players[2];
   rect(game, 10, 10, 20, 20, p.id);
   rect(game, 21, 10, 30, 20, nation.id);
   nation.troops = 10;
-  nation.ai = { aggression: 1 }; // marks it as a "serious" (non-tribe, non-human) target
+  nation.ai = { aggression: 1 }; // marks it as a real ("serious") player, not a tribe
   p.troops = p.maxTroops * 0.9; // comfortably above any TRIBE_TRIGGER_RANGE roll
 
-  p.ai = new TribeController(p, () => 0.999); // always fails the "keep looking" roll's inverse -- see below
+  p.ai = new TribeController(p, dummyRng);
   p.ai.firstThink = false;
   p.ai.cooldown = 0;
   p.ai.update(game);
 
-  const attacks = game.attacksBy(p.id);
-  check('attacks the only available neighbor even though it is a full nation',
-    attacks.length === 1 && attacks[0].targetId === nation.id);
+  check('never attacks the only available neighbor, since it is a full nation',
+    game.attacksBy(p.id).length === 0);
 }
 {
-  // A tribe and a nation both border p -- a favorable "keep looking" roll
-  // skips the nation in favor of the tribe.
+  // Same shape, but the human player (id 0, blankGame() reset it just like
+  // every other player) borders it instead of an AI nation -- the rule
+  // doesn't discriminate between the two kinds of real player.
+  const game = blankGame();
+  const p = game.players[1];
+  const human = game.human;
+  rect(game, 10, 10, 20, 20, p.id);
+  rect(game, 21, 10, 30, 20, human.id);
+  human.troops = 10;
+  p.troops = p.maxTroops * 0.9;
+
+  p.ai = new TribeController(p, dummyRng);
+  p.ai.firstThink = false;
+  p.ai.cooldown = 0;
+  p.ai.update(game);
+
+  check('never attacks the human player either',
+    game.attacksBy(p.id).length === 0);
+}
+{
+  // A tribe and a nation both border p -- the nation is never a candidate
+  // at all, so the tribe rival is attacked regardless of any roll.
   const game = blankGame();
   const p = game.players[1];
   const nation = game.players[2];
@@ -451,14 +502,60 @@ console.log('\n▸ Shyness toward a full nation/human is a preference, not an ab
   rivalTribe.ai = new TribeController(rivalTribe, dummyRng);
   p.troops = p.maxTroops * 0.9; // comfortably above any TRIBE_TRIGGER_RANGE roll
 
-  p.ai = new TribeController(p, () => 0.01); // low roll: the "skip a serious target" chance fires
+  // Even a roll that would have favoured the nation under the old
+  // "mildly prefer tribes" chance has nothing to work with now -- the
+  // nation was filtered out before any roll gets a say.
+  p.ai = new TribeController(p, () => 0.999);
   p.ai.firstThink = false;
   p.ai.cooldown = 0;
   p.ai.update(game);
 
   const attacks = game.attacksBy(p.id);
-  check('with the skip roll favorable, the tribe rival is attacked instead of the nation',
+  check('the tribe rival is attacked, the nation never a candidate',
     attacks.length === 1 && attacks[0].targetId === rivalTribe.id, `targetId=${attacks[0]?.targetId}`);
+}
+{
+  // A boat landing on someone's territory is an attack too -- a tribe with
+  // no land neighbor but a nation just across the water must not invade it.
+  // blankGame() fills the whole map with ocean before either rect is
+  // painted, so the gap between them (x 21-39) is already open water --
+  // nothing extra needed to make it a crossable strait.
+  const game = blankGame();
+  const p = game.players[1];
+  const nation = game.players[2];
+  rect(game, 10, 10, 20, 20, p.id);
+  rect(game, 40, 10, 50, 20, nation.id);
+  // markCoast() ran against the originally generated map, before this
+  // file's own terrain override, so it has no idea about the coastline
+  // just painted above -- mark it by hand so border.coastal is set.
+  for (const tile of p.tiles) game.map.coastal[tile] = 1;
+  nation.troops = 10;
+  p.troops = p.maxTroops * 0.9;
+
+  // Every random-tile attempt in #tryNavalInvasion should land squarely on
+  // the nation's territory, so a real invasion attempt is actually made and
+  // it's the owner check specifically that has to stop it, not chance
+  // missing the target entirely.
+  const targetTile = game.map.idx(45, 15);
+  const targetRoll = (targetTile + 0.5) / game.map.size;
+  let call = 0;
+  p.ai = new TribeController(p, () => {
+    call++;
+    // Calls 1-3 are the constructor's own rolls (attackRate/triggerRatio/
+    // cooldown) -- their exact value doesn't matter here. Call 4 is
+    // #tryNavalInvasion's boat-chance gate, which must pass (<=
+    // TRIBE_BOAT_CHANCE). Every call after that is a tile-selection roll,
+    // all aimed at the same tile deep in the nation's rect.
+    if (call <= 3) return 0.5;
+    if (call === 4) return 0.001;
+    return targetRoll;
+  });
+  p.ai.firstThink = false;
+  p.ai.cooldown = 0;
+  p.ai.update(game);
+
+  check('does not launch a boat at the nation across the water',
+    game.boats.length === 0);
 }
 
 // ---------------------------------------------------------------------------
