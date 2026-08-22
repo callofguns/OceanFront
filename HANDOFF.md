@@ -682,6 +682,43 @@ Full details, including what each test actually checks, are in
     region, so the underlying terrain pixels can't be the thing that
     changed -- confirming the cull is live every frame (toggling back down
     hides the name again), not a one-shot flag.
+- **GitHub Pages hosts `main` and `Update-Testing` at once, from a single
+  workflow (`.github/workflows/pages.yml`) rather than pointing Pages'
+  branch-source setting at either branch directly** -- a repo only has one
+  Pages deployment target, so hosting two branches means assembling them
+  into one artifact: `main` at the site root
+  (`https://callofguns.github.io/OceanFront/`), `Update-Testing` nested
+  under `/update-testing/`, a live staging copy for playtesting a batch of
+  merged work before an explicit "push to main" promotes it. Confirmed safe
+  to nest a whole second copy of the app under a subpath with zero code
+  changes: every asset reference in the project (`index.html`,
+  `manifest.json`'s `start_url`/`scope`, `sw.js`'s registration path and its
+  own `PRECACHE` list, every `<script>`/`<link>`) was already relative with
+  no leading `/`, so the same files resolve correctly regardless of how deep
+  they're served from.
+  - The workflow checks out **both** branches fresh on every run, regardless
+    of which one's push triggered it -- otherwise whichever branch didn't
+    trigger the run would keep shipping whatever was live the last time a
+    push landed on *it*, going stale between the other branch's pushes.
+  - It only actually fires on a push to `main` once this workflow file
+    exists on `main` itself (Actions runs the trigger-branch's own copy of
+    the workflow) -- not yet true the moment this ships, since `main` only
+    updates on an explicit "push to main". Until then, it still deploys
+    both branches' *current* content on every `Update-Testing` push (which
+    happens far more often) and via the manual "Run workflow" button /
+    `run_workflow` MCP call, so this isn't blocking day to day; it'll start
+    firing on `main` pushes too the first time this file rides along with a
+    normal Update-Testing -> main merge, with no special-casing needed.
+  - Requires a one-time step only a repo admin can do, not scriptable from
+    here: Settings -> Pages -> Source -> "GitHub Actions" (`.nojekyll` at
+    the repo root, added early in the project, already skips the default
+    Jekyll build either way).
+  - Also fixed while looking at this: `sw.js`'s offline `PRECACHE` list had
+    two pre-existing gaps -- `src/changelog.js` was never listed at all, and
+    it still only listed `src/maps/world.js`, missing all ten authored maps
+    from the last two rounds. An installed/offline player was missing
+    content a normal online visit would have. Both added; `CACHE_VERSION`
+    bumped so existing installs drop the incomplete cache on next launch.
 - **The v2.3.0-beta visual redesign and pause menu are verified by the
   automated suite and a manual desktop/375px pass, not yet by a human
   playing a real match on a real phone.** The design tokens (`styles.css`'s
