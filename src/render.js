@@ -406,9 +406,26 @@ export class Renderer {
       // No lower clamp here on purpose: matching OpenFrontIO, a name has to
       // be allowed to actually shrink below LABEL_CULL_PX as the camera
       // zooms out, or the cull right below can never trigger and names
-      // never disappear at all.
-      const size = Math.min(30, p.labelScale * this.camera.scale * 0.5);
-      if (size < LABEL_CULL_PX) continue;
+      // never disappear at all -- except the player's own tag (below),
+      // which is deliberately exempted so it's always findable.
+      const rawSize = p.labelScale * this.camera.scale * 0.5;
+      if (p.isHuman) {
+        // Stays visible at any zoom level right up until the camera hits
+        // the very bottom of its range (the whole map shrunk into open
+        // space, see minZoomScale in resize()/zoomAt()) -- a small
+        // epsilon over the exact clamp value, since repeated multiplicative
+        // zoom steps can land a hair above the floor without ever
+        // re-triggering the clamp that sets it to that exact number.
+        if (this.camera.scale <= this.minZoomScale * 1.01) continue;
+      } else if (rawSize < LABEL_CULL_PX) {
+        continue;
+      }
+      // The player's own tag also gets an old-style readable-size floor
+      // (never smaller than the cull threshold that would otherwise hide
+      // it) instead of shrinking away to nothing like everyone else's --
+      // it's exempt from disappearing, so it should stay legible while
+      // it's up, not fade into an unreadable sliver first.
+      const size = p.isHuman ? Math.max(LABEL_CULL_PX + 1, Math.min(30, rawSize)) : Math.min(30, rawSize);
 
       // Tribes read as background on the map too: a touch smaller, lighter
       // weight, and less than fully opaque, so a glance still reads which

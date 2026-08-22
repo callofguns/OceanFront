@@ -11,6 +11,10 @@
 //      >= the cull check) "too small, don't draw" cull in #drawLabels can
 //      actually trigger as the camera zooms out, matching OpenFrontIO's own
 //      name shader, which culls below a screen-size threshold.
+//   3. The player's own tag is exempt from that cull: it stays visible (at
+//      a readable floored size) at any zoom level right up until the
+//      camera hits the exact zoom floor from #1, unlike every other
+//      player's, which culls by on-screen size well before that.
 // Run the dev server first (`npm start`), then this script.
 import { chromium } from './lib/browser.mjs';
 
@@ -87,14 +91,16 @@ async function startMatch(page, { seed } = {}) {
   // Same fixed camera (position AND scale) throughout, so the terrain pixels
   // under the sampled region never change between the two cases -- only
   // labelScale moves, isolating the cull check from the zoom-floor change
-  // tested in Part 1.
+  // tested in Part 1. Deliberately an ordinary AI player, not game.human --
+  // the human is exempt from this cull (Part 3), so testing the general
+  // rule on it would test the wrong thing.
   async function sampleAt(labelScale) {
     return page.evaluate((labelScale) => {
       const { renderer: r, game: g } = window.OceanFront;
-      const human = g.human;
-      human.alive = true;
-      human.tiles = new Set(Array.from({ length: 30 }, (_, i) => i)); // >= 25, drawLabels' own floor
-      human.labelScale = labelScale;
+      const other = g.players[1];
+      other.alive = true;
+      other.tiles = new Set(Array.from({ length: 30 }, (_, i) => i)); // >= 25, drawLabels' own floor
+      other.labelScale = labelScale;
 
       r.camera.scale = 2;
       r.camera.x = (r.viewW - g.map.width * r.camera.scale) / 2;
@@ -102,14 +108,14 @@ async function startMatch(page, { seed } = {}) {
       r.clampCamera();
 
       const centerWorld = r.screenToWorld(r.viewW / 2, r.viewH / 2);
-      human.centroid = { x: centerWorld.x, y: centerWorld.y };
+      other.centroid = { x: centerWorld.x, y: centerWorld.y };
 
       return new Promise((resolve) => {
         // Let the real rAF loop (main.js) draw a couple of frames with this
         // state before sampling -- the same real render path a player sees,
         // not a manually-invoked draw call.
         setTimeout(() => {
-          const s = r.worldToScreen(human.centroid.x, human.centroid.y);
+          const s = r.worldToScreen(other.centroid.x, other.centroid.y);
           const boxW = 160, boxH = 60;
           const x0 = Math.max(0, Math.round(s.x - boxW / 2));
           const y0 = Math.max(0, Math.round(s.y - boxH / 2));
@@ -138,6 +144,74 @@ async function startMatch(page, { seed } = {}) {
   // not a one-shot "never draw this player again" flag.
   const hiddenAgain = await sampleAt(5);
   check('zooming back out hides the name again', hiddenAgain.brightCount === 0, `${hiddenAgain.brightCount} bright px`);
+
+  await page.close();
+}
+
+// ---------------------------------------------------------------- Part 3: the player's own tag stays visible far longer than everyone else's
+{
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  await startMatch(page, { seed: 1234 });
+
+  const { minScale, minZoomScale } = await page.evaluate(() => {
+    const { renderer: r } = window.OceanFront;
+    return { minScale: r.minScale, minZoomScale: r.minZoomScale };
+  });
+  // Halfway between the zoom floor and fit-to-screen -- comfortably past
+  // where an ordinary tag would already be culled, comfortably short of
+  // the floor where even the player's own tag is allowed to disappear.
+  const midScale = (minZoomScale + minScale) / 2;
+  // Sized so an ordinary player's computed size at midScale lands well
+  // under LABEL_CULL_PX (9), regardless of viewport/map -- solves
+  // labelScale * midScale * 0.5 = 4.
+  const tinyLabelScale = 8 / midScale;
+
+  async function sampleTag({ human, scale, labelScale }) {
+    return page.evaluate(({ human, scale, labelScale }) => {
+      const { renderer: r, game: g } = window.OceanFront;
+      const p = human ? g.human : g.players[1];
+      p.alive = true;
+      p.tiles = new Set(Array.from({ length: 30 }, (_, i) => i)); // >= 25, drawLabels' own floor
+      p.labelScale = labelScale;
+
+      r.camera.scale = scale;
+      r.camera.x = (r.viewW - g.map.width * r.camera.scale) / 2;
+      r.camera.y = (r.viewH - g.map.height * r.camera.scale) / 2;
+      r.clampCamera();
+
+      const centerWorld = r.screenToWorld(r.viewW / 2, r.viewH / 2);
+      p.centroid = { x: centerWorld.x, y: centerWorld.y };
+
+      return new Promise((resolve) => {
+        setTimeout(() => {
+          const s = r.worldToScreen(p.centroid.x, p.centroid.y);
+          const boxW = 160, boxH = 60;
+          const x0 = Math.max(0, Math.round(s.x - boxW / 2));
+          const y0 = Math.max(0, Math.round(s.y - boxH / 2));
+          const data = r.ctx.getImageData(x0, y0, boxW, boxH).data;
+          let brightCount = 0;
+          for (let i = 0; i < data.length; i += 4) {
+            if (data[i] + data[i + 1] + data[i + 2] > 720) brightCount++;
+          }
+          resolve({ brightCount });
+        }, 120);
+      });
+    }, { human, scale, labelScale });
+  }
+
+  const other = await sampleTag({ human: false, scale: midScale, labelScale: tinyLabelScale });
+  console.log(`  other player at midScale=${midScale.toFixed(3)}, labelScale=${tinyLabelScale.toFixed(2)}: brightPixels=${other.brightCount}`);
+  check("a normal player's tag is already culled at this zoom level", other.brightCount === 0, `${other.brightCount} bright px`);
+
+  const own = await sampleTag({ human: true, scale: midScale, labelScale: tinyLabelScale });
+  console.log(`  own tag at the same midScale and labelScale: brightPixels=${own.brightCount}`);
+  check("the player's own tag, same labelScale and zoom level, is still drawn", own.brightCount > 0, `${own.brightCount} bright px`);
+
+  // Push all the way to the true floor -- even the player's own tag finally
+  // disappears once the whole map is zoomed all the way out.
+  const ownAtFloor = await sampleTag({ human: true, scale: minZoomScale, labelScale: tinyLabelScale });
+  console.log(`  own tag at the true zoom floor (minZoomScale=${minZoomScale.toFixed(3)}): brightPixels=${ownAtFloor.brightCount}`);
+  check("the player's own tag disappears once the camera hits the true zoom floor", ownAtFloor.brightCount === 0, `${ownAtFloor.brightCount} bright px`);
 
   await page.close();
 }
