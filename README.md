@@ -91,6 +91,12 @@ meant to be edited by hand, one character per cell.
 
 **Winning.** Hold 60% of the world's land, or outlast everyone.
 
+**Sound.** Every effect and the ambient background music are synthesized
+live in the browser via the Web Audio API -- there isn't a single audio file
+in the project. Sound is on by default the moment a match starts; separate
+effects and music volume sliders (plus a mute button) live in the pause
+menu, alongside the `M` hotkey.
+
 ## Controls
 
 | Input | Action |
@@ -102,6 +108,7 @@ meant to be edited by hand, one character per cell.
 | `1`–`5` | Select a structure to build |
 | Shift + click | Keep placing the same structure |
 | `N` | Nuclear strike targeting |
+| `M` | Mute / unmute sound |
 | Space | Pause |
 
 **On a phone or tablet:** tap to attack, place structures and spawn, same as
@@ -150,6 +157,7 @@ src/
   ai.js           full-nation bot personalities and decision-making
   tribe.js        the weaker, second AI archetype, see "Tribes", above
   render.js       camera and canvas drawing
+  sound.js        every sound effect and the ambient music, synthesized live
   ui.js           DOM wiring, input (mouse, touch/pinch), mobile chrome
   main.js         fixed-timestep game loop, service worker registration
 tools/

@@ -63,6 +63,9 @@ export class Diplomacy {
     const to = this.game.players[toId];
     if (to.isHuman) {
       this.game.log(`${from.name} proposes an alliance.`, from.color);
+      // Gated at the source, not in the listener: AI-to-AI offers fire
+      // constantly and would be pure callback noise otherwise.
+      this.game.signal('alliance-offer', { fromId, toId });
     }
     return true;
   }
@@ -81,6 +84,7 @@ export class Diplomacy {
     // Standing attacks between new allies are called off immediately.
     this.game.cancelAttacksBetween(a.id, b.id);
     this.game.log(`${a.name} and ${b.name} are now allied.`, '#8fe1ff');
+    this.game.signal('alliance-formed', { aId: a.id, bId: b.id });
     this.game.dirty = true;
   }
 
@@ -121,8 +125,10 @@ export class Diplomacy {
     if (penalize) {
       a.traitorScore += BETRAYAL_PENALTY;
       this.game.log(`${a.name} betrayed ${b.name}!`, '#ff9d5c');
+      this.game.signal('betrayed', { initiatorId, otherId });
     } else {
       this.game.log(`${a.name} and ${b.name} went their separate ways.`, '#9fb0c4');
+      this.game.signal('alliance-broken', { initiatorId, otherId });
     }
     this.game.dirty = true;
     return true;

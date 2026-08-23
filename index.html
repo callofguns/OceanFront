@@ -135,6 +135,30 @@
   <div class="dialog pause-dialog modal-scroll">
     <button type="button" id="pause-close" class="modal-close" aria-label="Close">✕</button>
     <h1>Paused</h1>
+    <div class="menu-section sound-section">
+      <div class="menu-section-title">Sound</div>
+      <label class="slider">
+        <span class="slider-head">
+          <span>Effects</span>
+          <b>70%</b>
+        </span>
+        <input type="range" data-volume="sfx" min="0" max="100" step="5" value="70">
+      </label>
+      <label class="slider">
+        <span class="slider-head">
+          <span>Music</span>
+          <b>45%</b>
+        </span>
+        <input type="range" data-volume="music" min="0" max="100" step="5" value="45">
+      </label>
+      <button type="button" class="action-btn" data-mute>
+        <span class="icon">🔊</span>
+        <span class="body">
+          <span class="title">Mute sound</span>
+          <span class="sub">Hotkey: M</span>
+        </span>
+      </button>
+    </div>
     <div class="action-list">
       <button type="button" id="pause-resume" class="action-btn">
         <span class="icon">▶</span>

@@ -708,3 +708,112 @@ export const PLAYER_COLORS = [
  * adding a second timer -- was `0.75` (~45px/s), over 20x slower than this.
  */
 export const KEYBOARD_PAN_SPEED = 16;
+
+// ----------------------------------------------------------------- sound ----
+//
+// All audio is synthesized live via the Web Audio API (src/sound.js) --
+// there are no binary audio files anywhere in this project. Two reasons:
+// zero runtime dependencies stays true (no asset pipeline, nothing to
+// precache but code), and it sidesteps asset licensing entirely -- the
+// natural reference, OpenFrontIO, ships its sound effects under CC BY-SA
+// 4.0 and its music fully proprietary (fetched from their live service, not
+// even in their repo), and this project's own repeated precedent is to
+// study OpenFrontIO's *mechanic* (which moments get sound, how volume/mute
+// behave) and never import their literal asset files, same as every other
+// round that has touched OpenFrontIO parity. Per-oscillator synthesis
+// parameters (frequencies, filter Q, envelope shapes) live in sound.js
+// itself, not here -- they're a sound's implementation, not a balance
+// knob. Only what a person would plausibly retune lives in this file.
+
+/** Both default ON at a moderate level -- sound is part of the game, not an
+ *  opt-in some players will never find. Raw slider positions (0-1); sound.js
+ *  squares them for an audio-taper curve, since perceived loudness is
+ *  roughly logarithmic but a slider position is linear. */
+export const SFX_VOLUME_DEFAULT = 0.7;
+export const MUSIC_VOLUME_DEFAULT = 0.45;
+
+/** Concurrent effect voices. A 9th evicts the oldest (faded, not cut) rather
+ *  than piling on -- a busy tick would otherwise turn into mush. */
+export const MAX_SFX_VOICES = 8;
+
+/** Floor on how often any one effect may retrigger, in ms -- generalizes
+ *  OpenFrontIO's own MIRV-hit throttle (a sound type that can legitimately
+ *  fire many times in quick succession needs a minimum gap so it can't
+ *  flood the mix). `click` fires the most and needs the shortest floor to
+ *  still feel responsive; the two loudest/rarest effects get the longest. */
+export const SFX_MIN_GAP_MS = 55;
+export const SFX_GAP_MS = {
+  click: 35,
+  'nuke-launch': 250,
+  'nuke-hit': 400,
+  conquest: 300,
+  annex: 300,
+};
+
+/** Final per-effect mix trim, applied on top of each recipe's own internal
+ *  gains -- keeps the loudest effects (nukes) from drowning the quietest
+ *  (click) once everything shares one sfx bus. */
+export const SFX_MIX = {
+  click: 0.35,
+  'build-city': 0.8,
+  'build-port': 0.8,
+  'build-defense': 0.8,
+  'build-silo': 0.85,
+  'build-sam': 0.8,
+  'nuke-launch': 1.0,
+  'nuke-hit': 1.0,
+  intercept: 0.85,
+  conquest: 1.0,
+  annex: 0.95,
+  'alliance-offer': 0.7,
+  'alliance-formed': 0.7,
+  'alliance-broken': 0.6,
+  betrayed: 0.85,
+  victory: 1.0,
+  defeat: 0.9,
+};
+
+/**
+ * Generative ambient music, A natural minor. Six diatonic chords (Roman
+ * numerals: i, VI, VII, III, iv, v), each a root-position triad spread
+ * across a couple of octaves for an open, non-muddy voicing. Walked with a
+ * weighted Markov chain (MUSIC_TRANSITIONS) rather than a fixed
+ * progression -- a fixed 4-bar loop is exactly what becomes annoying on
+ * repeat. Every row sums to 1 and every chord can always reach `i`, so the
+ * walk can never stall or wander permanently out of key.
+ */
+export const MUSIC_CHORDS = {
+  i: [110, 261.63, 329.63], // A2 C4 E4 -- A minor
+  VI: [87.31, 220, 261.63], // F2 A3 C4 -- F major
+  VII: [98, 246.94, 293.66], // G2 B3 D4 -- G major
+  III: [130.81, 164.81, 196], // C3 E3 G3 -- C major
+  iv: [146.83, 174.61, 220], // D3 F3 A3 -- D minor
+  v: [164.81, 196, 246.94], // E3 G3 B3 -- E minor
+};
+export const MUSIC_TRANSITIONS = {
+  i: { VI: 0.35, VII: 0.25, iv: 0.2, III: 0.2 },
+  VI: { VII: 0.4, III: 0.3, i: 0.3 },
+  VII: { i: 0.45, III: 0.3, VI: 0.25 },
+  III: { VII: 0.35, iv: 0.3, VI: 0.35 },
+  iv: { v: 0.3, i: 0.35, VII: 0.35 },
+  v: { i: 0.6, VI: 0.4 },
+};
+/** Each chord holds for a random duration in this range, seconds -- fixed
+ *  bar lengths are what make generative music start to feel like a loop. */
+export const MUSIC_CHORD_SECONDS = [9, 15];
+/** A sparse punctuating bell, pitched off the *current* chord (so it can
+ *  never clash), fired at a random interval in this range, seconds. */
+export const MUSIC_BELL_SECONDS = [11, 26];
+/** Retuning a live oscillator glides audibly, so chord changes crossfade
+ *  between two alternating pad voices instead -- this is that crossfade's
+ *  length, seconds. */
+export const MUSIC_CROSSFADE = 4;
+export const MUSIC_FADE_IN = 2.5;
+export const MUSIC_FADE_OUT = 1.2;
+/** Slow filter LFO sweeping the pad voices for a "breathing" feel.
+ *  Deliberately not a clean divisor of any chord length, so the sweep and
+ *  the chord walk never lock into an audible, repeating pattern together. */
+export const MUSIC_FILTER_LFO_HZ = 0.035;
+/** How far the music ducks under a dramatic sfx hit (nuke-hit, conquest),
+ *  as a fraction of its current level. */
+export const MUSIC_DUCK_TO = 0.35;

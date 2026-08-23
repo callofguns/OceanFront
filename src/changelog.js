@@ -2,7 +2,7 @@
 // main menu. CURRENT_VERSION drives the visible tag, bump it whenever a
 // new entry is added below. Newest first.
 
-export const CURRENT_VERSION = 'v2.7.1-beta';
+export const CURRENT_VERSION = 'v2.7.2-beta';
 
 /**
  * The roadmap, newest work first, shown as "Coming soon" above the release
@@ -10,7 +10,6 @@ export const CURRENT_VERSION = 'v2.7.1-beta';
  * attached: this is what is being worked towards, not a set of promises.
  */
 export const UPCOMING = [
-  'Sound and music',
   'Player profile panel',
   'Better UI',
   'Multiplayer',
@@ -19,6 +18,13 @@ export const UPCOMING = [
 ];
 
 export const CHANGELOG = [
+  {
+    version: 'v2.7.2-beta',
+    notes: [
+      'The game has sound now. Building, launching a nuke, a SAM intercept, conquering a nation, forming or breaking an alliance, betrayal, victory and defeat all get their own distinct sound, plus a generative ambient soundtrack that quietly evolves through the whole match instead of looping. All of it plays on by default the moment a match starts.',
+      'New Sound section in the pause menu: separate volume sliders for effects and music, and a mute button — or just hit M to mute/unmute instantly.',
+    ],
+  },
   {
     version: 'v2.7.1-beta',
     notes: [
