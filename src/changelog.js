@@ -2,7 +2,7 @@
 // main menu. CURRENT_VERSION drives the visible tag, bump it whenever a
 // new entry is added below. Newest first.
 
-export const CURRENT_VERSION = 'v2.7.2-beta';
+export const CURRENT_VERSION = 'v2.8.0-beta';
 
 /**
  * The roadmap, newest work first, shown as "Coming soon" above the release
@@ -17,6 +17,13 @@ export const UPCOMING = [
 ];
 
 export const CHANGELOG = [
+  {
+    version: 'v2.8.0-beta',
+    notes: [
+      'Team games. Pick Duos, Trios or Quads on the main menu and you\'re grouped with one or more nations for the whole match — permanently, with no proposing, breaking or betraying it like an alliance. Teammates can never attack each other, spawn near one another, and their shared territory renders as one seamless landmass on the map. A team wins the moment its combined land crosses 60%, even if no single member holds that much alone.',
+      'Fixed two bugs found while building this: boats and nuclear strikes could be launched straight at a sworn ally — both now refuse a friendly target, same as an ordinary attack always has.',
+    ],
+  },
   {
     version: 'v2.7.2-beta',
     notes: [
