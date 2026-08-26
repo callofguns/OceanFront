@@ -44,6 +44,7 @@ export class Renderer {
     for (let i = 3; i < this.pixels.length; i += 4) this.pixels[i] = 255;
 
     this.colors = this.#buildColorTable();
+    this.teams = this.#buildTeamTable();
     this.camera = { x: 0, y: 0, scale: 1 };
     this.needsLayer = true;
   }
@@ -65,6 +66,21 @@ export class Renderer {
         noBorder: p.isTribe,
       };
     }
+    return table;
+  }
+
+  /**
+   * Which "side" each owner id renders as, indexed by ownerId + 1 so the
+   * NEUTRAL owner (-1) is a real slot rather than a negative array index or
+   * a branch inside the per-pixel loop below. Teams never change once a
+   * match starts, so this is built once and never rebuilt.
+   */
+  #buildTeamTable() {
+    const game = this.game;
+    const n = game.players.length;
+    const table = new Int32Array(n + 1);
+    table[0] = n + 1; // NEUTRAL -- larger than any real team key, matches nobody
+    for (const p of game.players) table[p.id + 1] = game.teamKeyOf(p.id);
     return table;
   }
 
@@ -151,6 +167,7 @@ export class Renderer {
     const owner = game.owner;
     const px = this.pixels;
     const colors = this.colors;
+    const teams = this.teams;
 
     for (let y = 0; y < height; y++) {
       const row = y * width;
@@ -166,12 +183,18 @@ export class Renderer {
           continue;
         }
 
-        // A tile is a border tile if any orthogonal neighbour is owned by
-        // somebody else (map edges count as border too).
+        // A tile is a border tile if any orthogonal neighbour belongs to a
+        // different side (map edges count as border too). Two nations on
+        // the SAME team share no border at all, so a team reads as one
+        // landmass while each nation keeps its own interior colour --
+        // compared by team key, not raw owner id, but otherwise identical
+        // to the pre-teams comparison (teamKeyOf is injective over player
+        // ids in a solo match, so this is provably the same test there).
+        const side = teams[o + 1];
         const isBorder =
           x === 0 || x === width - 1 || y === 0 || y === height - 1 ||
-          owner[i - 1] !== o || owner[i + 1] !== o ||
-          owner[i - width] !== o || owner[i + width] !== o;
+          teams[owner[i - 1] + 1] !== side || teams[owner[i + 1] + 1] !== side ||
+          teams[owner[i - width] + 1] !== side || teams[owner[i + width] + 1] !== side;
 
         const c = colors[o];
         if (isBorder && !c.noBorder) {
@@ -437,7 +460,12 @@ export class Renderer {
       ctx.strokeStyle = 'rgba(0,0,0,0.75)';
       ctx.fillStyle = p.isTribe ? 'rgba(255,255,255,0.78)' : '#ffffff';
       // Mark nations the player is sworn to, so the map reads at a glance.
-      const label = game.human.allies.has(p.id) ? `🤝 ${p.name}` : p.name;
+      // A teammate is checked first: the affiliation is permanent, unlike
+      // an alliance, so it gets its own glyph rather than sharing the
+      // handshake. In a solo match nobody shares the human's teamId, so
+      // this branch is never taken there.
+      const teammate = !p.isHuman && p.teamId !== null && p.teamId === game.human.teamId;
+      const label = teammate ? `🛡 ${p.name}` : game.human.allies.has(p.id) ? `🤝 ${p.name}` : p.name;
       ctx.strokeText(label, s.x, s.y - size * 0.55);
       ctx.fillText(label, s.x, s.y - size * 0.55);
 

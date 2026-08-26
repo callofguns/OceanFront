@@ -73,6 +73,17 @@ pays. You can break a pact after it has aged, but betrayal is remembered:
 your traitor score rises, and other nations stop trusting your offers until it
 decays. The AI plays the same game, including turning on you.
 
+**Teams.** Pick Duos, Trios or Quads on the main menu and you're grouped with
+one or more nations, picked for you, for the whole match. A team is
+permanent -- unlike an alliance, there is no proposing, breaking or
+betraying it. Teammates can never attack each other, spawn near one another,
+and their shared borders render as one seamless landmass on the map (each
+nation keeps its own colour; only the border between teammates disappears).
+A team wins the moment its *combined* land crosses 60%, even if no single
+member holds that much alone. Team sizes are the closest fit the map's
+nation count allows, not always exact -- Small in Quads, for instance, splits
+into a 5-nation team and a 4-nation one rather than an uneven leftover team.
+
 **Tribes.** Alongside the full nations, the map is dotted with tribes,
 small, lazy bands that spend the opening minutes grabbing whatever open land
 is nearby. They'll sign any pact offered to them but never propose one

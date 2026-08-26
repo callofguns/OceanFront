@@ -103,7 +103,10 @@ for (const p of game.players) {
 }
 
 console.log('\nResult');
-console.log(`  outcome        ${game.winner ? `${game.winner.name} won` : 'no winner within time limit'}`);
+const winningTeamSize = game.winner ? game.teamMembers(game.winningTeamId).length : 0;
+console.log(`  outcome        ${game.winner
+  ? `${game.winner.name} won${winningTeamSize > 1 ? ` (team ${game.winningTeamId})` : ''}`
+  : 'no winner within time limit'}`);
 console.log(`  game time      ${(ticks / TICKS_PER_SECOND / 60).toFixed(1)} min (${ticks} ticks)`);
 console.log(`  survivors      ${game.players.filter((p) => p.alive).length} / ${game.players.length}`);
 console.log(`  land claimed   ${((game.players.reduce((n, p) => n + p.tiles.size, 0) / game.map.landCount) * 100).toFixed(1)}%`);

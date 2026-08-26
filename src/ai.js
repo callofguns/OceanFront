@@ -118,7 +118,7 @@ export class AiController {
       border.neutral === 0 &&
       neighbours.length > 0 &&
       neighbours.every((id) => {
-        if (p.allies.has(id)) return true;
+        if (game.isFriendly(p.id, id)) return true;
         const ratio = (myFill + 0.1) / (game.players[id].fillRatio + 0.1);
         return ratio < 0.75; // same floor #viableRivals uses in #makeWar
       });
@@ -272,8 +272,11 @@ export class AiController {
     if (p.gold < NUKE_COST * (1.6 + this.greed)) return;
     if (this.rng() > 0.35) return;
 
-    // Aim at the strongest rival we can see.
-    const rivals = game.players.filter((q) => q.alive && q.id !== p.id && q.tiles.size > 400);
+    // Aim at the strongest rival we can see. launchNuke itself now refuses
+    // a friendly target too, but excluding teammates/allies here means a
+    // silo's cooldown and gold never get spent on a shot that's just going
+    // to bounce.
+    const rivals = game.players.filter((q) => q.alive && !game.isFriendly(p.id, q.id) && q.tiles.size > 400);
     if (rivals.length === 0) return;
     rivals.sort((a, b) => b.tiles.size - a.tiles.size);
     const target = rivals[0];
@@ -397,7 +400,7 @@ export class AiController {
     for (const rivalId of border.contact.keys()) {
       if (alreadyTargeted.has(rivalId)) continue; // launchAttack would just reinforce -- skip the work
       const rival = game.players[rivalId];
-      if (!rival.alive || !rival.isTribe || p.allies.has(rivalId)) continue;
+      if (!rival.alive || !rival.isTribe || game.isFriendly(p.id, rivalId)) continue;
       tribes.push(rival);
     }
     if (tribes.length === 0) return;
@@ -433,7 +436,7 @@ export class AiController {
     let bestTroops = 0;
     for (const atk of game.attacksOn(p.id)) {
       const attacker = game.players[atk.attackerId];
-      if (!attacker.alive || attacker.isTribe || p.allies.has(attacker.id)) continue;
+      if (!attacker.alive || attacker.isTribe || game.isFriendly(p.id, attacker.id)) continue;
       if (atk.troops > bestTroops) {
         bestTroops = atk.troops;
         best = attacker.id;
@@ -462,7 +465,7 @@ export class AiController {
       const rival = game.players[rivalId];
       if (!rival.alive) continue;
       if (rival.isTribe) continue; // #attackNearbyTribes' territory, not this chain's
-      if (p.allies.has(rivalId)) continue; // bound by treaty
+      if (game.isFriendly(p.id, rivalId)) continue; // teammate or bound by treaty
 
       // Fill ratio (not density -- see the boxedIn comment in #doDiplomacy)
       // gates and scores relative *strength*; theirDensity is kept
@@ -558,7 +561,9 @@ export class AiController {
     for (let attempt = 0; attempt < 8; attempt++) {
       const tile = Math.floor(this.rng() * game.map.size);
       if (!game.map.isLand(tile)) continue;
-      if (game.owner[tile] === p.id) continue;
+      // launchBoat itself now refuses a friendly target too (teammate,
+      // ally, or self); skipping it here just saves a wasted attempt.
+      if (game.isFriendly(p.id, game.owner[tile])) continue;
       if (game.map.dist(tile, game.map.idx(Math.round(p.centroid.x), Math.round(p.centroid.y))) > game.boatRange(p)) {
         continue;
       }

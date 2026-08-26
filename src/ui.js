@@ -15,6 +15,8 @@ import {
   KEYBOARD_PAN_SPEED,
   SFX_VOLUME_DEFAULT,
   MUSIC_VOLUME_DEFAULT,
+  TEAM_MODES,
+  DEFAULT_TEAM_MODE,
 } from './config.js';
 import { formatShort } from './render.js';
 import { CURRENT_VERSION, CHANGELOG, UPCOMING } from './changelog.js';
@@ -61,6 +63,7 @@ export class UI {
       color: PLAYER_COLORS[0],
       preset: 'medium',
       difficulty: DEFAULT_DIFFICULTY,
+      teamMode: DEFAULT_TEAM_MODE,
       sfxVolume: SFX_VOLUME_DEFAULT,
       musicVolume: MUSIC_VOLUME_DEFAULT,
       muted: false,
@@ -162,6 +165,7 @@ export class UI {
       if (PLAYER_COLORS.includes(saved.color)) this.settings.color = saved.color;
       if (MAP_PRESETS[saved.preset]) this.settings.preset = saved.preset;
       if (DIFFICULTIES[saved.difficulty]) this.settings.difficulty = saved.difficulty;
+      if (TEAM_MODES[saved.teamMode]) this.settings.teamMode = saved.teamMode;
       if (typeof saved.sfxVolume === 'number' && saved.sfxVolume >= 0 && saved.sfxVolume <= 1) {
         this.settings.sfxVolume = saved.sfxVolume;
       }
@@ -282,6 +286,23 @@ export class UI {
       difficultyPicker.appendChild(btn);
     }
 
+    const teamPicker = $('team-picker');
+    for (const mode of Object.values(TEAM_MODES)) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'choice' + (mode.key === this.settings.teamMode ? ' is-active' : '');
+      btn.appendChild(document.createTextNode(mode.label));
+      const small = document.createElement('small');
+      small.textContent = mode.teamSize === 1 ? 'default' : `${mode.teamSize} per team`;
+      btn.appendChild(small);
+      btn.addEventListener('click', () => {
+        this.settings.teamMode = mode.key;
+        for (const el of teamPicker.children) el.classList.remove('is-active');
+        btn.classList.add('is-active');
+      });
+      teamPicker.appendChild(btn);
+    }
+
     const seedInput = $('seed-input');
     seedInput.value = String(Math.floor(Math.random() * 1_000_000));
 
@@ -300,6 +321,7 @@ export class UI {
         playerName: name,
         playerColor: this.settings.color,
         difficulty: this.settings.difficulty,
+        teamMode: this.settings.teamMode,
       };
       this._lastStartOptions = options;
       this.onStart?.(options);
@@ -971,8 +993,13 @@ export class UI {
       this.toast('You already hold that land.');
       return;
     }
-    if (targetId >= 0 && human.allies.has(targetId)) {
-      this.toast(`You are allied with ${game.players[targetId].name}. Break the pact first.`);
+    if (targetId >= 0 && game.isFriendly(human.id, targetId)) {
+      const other = game.players[targetId];
+      this.toast(
+        other.teamId !== null && other.teamId === human.teamId
+          ? `${other.name} is on your team.`
+          : `You are allied with ${other.name}. Break the pact first.`
+      );
       return;
     }
 
@@ -1179,6 +1206,9 @@ export class UI {
     const swatch = document.createElement('span');
     swatch.className = 'lb-swatch';
 
+    const team = document.createElement('span');
+    team.className = 'lb-team';
+
     const name = document.createElement('span');
     name.className = 'lb-name';
 
@@ -1198,16 +1228,30 @@ export class UI {
     // label never requires replacing the element (and losing taps).
     btn.addEventListener('click', () => this.#onDiplomacyAction(player.id));
 
-    li.append(swatch, name, share, tag, btn);
-    return { li, swatch, name, share, tag, btn };
+    li.append(swatch, team, name, share, tag, btn);
+    return { li, swatch, team, name, share, tag, btn };
   }
 
   #updateLeaderboardRow(row, game, human, p) {
-    const { li, swatch, name, share, tag, btn } = row;
+    const { li, swatch, team, name, share, tag, btn } = row;
 
+    const teammate = !p.isHuman && p.teamId !== null && p.teamId === human.teamId;
     li.classList.toggle('is-you', p.isHuman);
     li.classList.toggle('is-tribe', p.isTribe);
+    li.classList.toggle('is-teammate', teammate);
     if (swatch.style.background !== p.color) swatch.style.background = p.color;
+
+    // Kept in the layout either way (visibility, not display), same
+    // reasoning as the traitor tag below -- a row must never reflow mid-tap.
+    const showTeam = game.teamSize > 1 && p.teamId !== null;
+    team.classList.toggle('is-empty', !showTeam);
+    if (showTeam) {
+      const letter = String.fromCharCode(65 + p.teamId);
+      if (team.textContent !== letter) team.textContent = letter;
+      const teamTitle = teammate ? 'Your team' : `Team ${letter}`;
+      if (team.title !== teamTitle) team.title = teamTitle;
+    }
+
     if (name.textContent !== p.name) name.textContent = p.name;
 
     const shareText = `${(game.landShare(p) * 100).toFixed(1)}%`;
@@ -1218,6 +1262,12 @@ export class UI {
     tag.classList.toggle('is-empty', p.traitorScore < 1);
 
     if (p.isHuman) {
+      btn.hidden = true;
+      return;
+    }
+    // A team is permanent -- there is nothing to offer and nothing to
+    // break, so the row simply has no diplomacy action, same as your own.
+    if (teammate) {
       btn.hidden = true;
       return;
     }
@@ -1389,14 +1439,28 @@ export class UI {
 
   showEndScreen(game) {
     const human = game.human;
-    const won = game.winner === human;
+    // A team win is credited to whichever member personally held the most
+    // land (game.winner stays a single Player either way) -- teamMembers()
+    // tells the difference between that and a solo "team" of one, which is
+    // what keeps every branch below inert in a solo match: nobody else
+    // ever shares a solo player's teamId.
+    const winningTeam = game.teamMembers(game.winningTeamId);
+    const teamWin = winningTeam.length > 1;
+    const wonPersonally = game.winner === human;
+    const won = wonPersonally || (game.winningTeamId != null && game.winningTeamId === human.teamId);
     this.sound.stopMusic();
     this.sound.play(won ? 'victory' : 'defeat');
     $('end-title').textContent = won ? '🏆 Victory' : game.winner ? 'Defeat' : 'Eliminated';
     $('end-body').textContent = won
-      ? 'You hold the world. The oceans are yours.'
+      ? wonPersonally
+        ? teamWin
+          ? 'You and your team hold the world. The oceans are yours.'
+          : 'You hold the world. The oceans are yours.'
+        : 'Your team holds the world. The oceans are yours.'
       : game.winner
-        ? `${game.winner.name} has taken the world.`
+        ? teamWin
+          ? `${game.winner.name} and team have taken the world.`
+          : `${game.winner.name} has taken the world.`
         : 'Your nation has been erased from the map.';
 
     const stats = [

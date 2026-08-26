@@ -628,6 +628,18 @@ export const SPAWN_POOL_OVERSHOOT = 1.25;
 export const SPAWN_POOL_MARGIN = 6;
 
 /**
+ * How far from a team's first spawn its remaining members are allowed to be
+ * placed, in tiles (Game#nearestFreeSpawn). findSpawnPoints spaces
+ * candidates roughly 10 (Small) / 14 (Medium) / 18 (Large) tiles apart, so
+ * this is about two to three candidate-spacings' worth of room: enough that
+ * a team almost always finds somewhere nearby, tight enough that a duo's two
+ * homelands read as one region rather than two coincidentally close ones. If
+ * nothing inside the radius is free, the member falls back to the ordinary
+ * scattered placement every other nation uses.
+ */
+export const TEAM_SPAWN_RADIUS = 45;
+
+/**
  * Bot difficulty, chosen on the main menu. Scales bots on four axes:
  * troopsCapMultiplier and troopsMultiplier (troop *cap* and troop *growth
  * rate*, scaled separately -- OpenFrontIO's own maxTroops()/
@@ -681,6 +693,28 @@ export const DIFFICULTIES = {
   },
 };
 export const DEFAULT_DIFFICULTY = 'normal';
+
+/**
+ * Match format, chosen on the main menu. `teamSize` is the *requested*
+ * members per team -- the real split is decided once, at Game construction
+ * (Game#assignTeams), from however many nations the preset actually fields,
+ * so a 9-nation Small map in duos ends up as [3,2,2,2] rather than leaving a
+ * lone nation without a partner. Teams are permanent for the whole match:
+ * no leaving, no betrayal, no negotiation -- that is what makes a team
+ * different from an alliance in src/diplomacy.js, which is all three.
+ * Tribes are never on a team, at any size.
+ *
+ * `solo` (teamSize 1) is the historical shape of the game and must stay
+ * bit-for-bit identical to it -- see Game#assignTeams for the invariant
+ * this depends on.
+ */
+export const TEAM_MODES = {
+  solo: { key: 'solo', label: 'Solo', teamSize: 1 },
+  duos: { key: 'duos', label: 'Duos', teamSize: 2 },
+  trios: { key: 'trios', label: 'Trios', teamSize: 3 },
+  quads: { key: 'quads', label: 'Quads', teamSize: 4 },
+};
+export const DEFAULT_TEAM_MODE = 'solo';
 
 export const PLAYER_COLORS = [
   '#e0484f', '#3f8ce8', '#37b26a', '#e0a33a', '#9b5de5',
