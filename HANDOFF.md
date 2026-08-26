@@ -20,13 +20,13 @@ On `main` (or `Update-Testing`, staged for a later merge -- check which with
 `git log`). Latest version tag in-game is whatever `CURRENT_VERSION` says in
 `src/changelog.js` -- check there and with `git log -1` for the exact commit,
 rather than trusting a hash written here, since both move. As of this
-hand-off that's **v2.7.1-beta** on `main`, with sound and music (`src/sound.js`
--- every effect and the ambient background music synthesized live via the
-Web Audio API, zero audio files, see the load-bearing lessons below) merged
-into `Update-Testing` on top of it, not yet released under a bumped
-version. Whether any recent version has been cut as a GitHub release is
-worth asking the user rather than assuming (see below -- this session can't
-push tags itself, so there's no way to check from git alone).
+hand-off that's **v2.7.2-beta** on `main` (sound and music), with team games
+(`Player#teamId`, `Game#isFriendly`/`#assignTeams`, the Solo/Duos/Trios/Quads
+picker -- see the load-bearing lessons below) merged into `Update-Testing`
+on top of it, not yet released under a bumped version. Whether any recent
+version has been cut as a GitHub release is worth asking the user rather
+than assuming (see below -- this session can't push tags itself, so
+there's no way to check from git alone).
 
 ## Standing workflow rules
 
@@ -478,6 +478,92 @@ rediscover them a second time.
     every other unused player, not touching game.js -- but the failure
     mode (a test that "does nothing" many ticks in, with no thrown error)
     is worth recognizing quickly if it resurfaces in a different fixture.
+- **A team is a fixed `Player#teamId`, deliberately NOT folded into
+  `Diplomacy`/`allies`.** `allies` means one specific thing everywhere in
+  this codebase -- a negotiable, breakable pact with its own two-ally cap
+  (`ai.js`'s `allies.size >= 2`, `diplomacy.js`'s `aiWouldAccept`
+  reputation math). Folding a permanent team into it would have meant a
+  trio's members instantly maxing out their *real* alliance budget on
+  each other, and threading an "unbreakable" flag through `canBreak`.
+  Keeping them separate means a trio's members can each still sign two
+  genuine alliances with outsiders, and hiding the Ally/Betray button for
+  a teammate is a plain identity check, not a special case bolted onto
+  `Diplomacy`.
+  - **`Game#isFriendly(aId, bId)`** (same player, same team, or a real
+    alliance) is the one legality gate every attack path funnels through
+    now -- `launchAttack`, `#annexEnclosedNations`, `launchBoat`,
+    `launchNuke`, and every AI target pool in `ai.js` (`boxedIn`,
+    `#viableRivals`, `#findRetaliation`, `#attackNearbyTribes`,
+    `#tryNavalInvasion`, `#useMissiles`). `player.allies` stays the one
+    diplomacy ledger -- the ally cap, betrayal eligibility, and
+    `aiWouldAccept`'s scoring all keep reading it directly, never
+    `isFriendly`. If a future change needs "is this a real ally"
+    specifically (not "is this a friend for any reason"), reach for
+    `diplomacy.areAllied()` directly rather than `isFriendly` -- the two
+    are not interchangeable, only `isFriendly` is the superset.
+  - **This round's own audit found two real pre-existing bugs unrelated to
+    teams**: `launchBoat`/`#processBoat` and `launchNuke` had no alliance
+    check at all before this feature -- a boat could seize a real ally's
+    tile, a bot could nuke its own ally. Both were fixed by the same
+    `isFriendly()` guard the team case needed anyway. Worth remembering
+    the next time a new attack path is added: it needs its own
+    `isFriendly()` guard, there is no single choke point that covers
+    every way troops can change a tile's owner (unlike `launchAttack`,
+    which *is* that choke point for ordinary land combat).
+- **Solo mode (`teamSize === 1`) must consume zero draws from `this.rng`
+  in `Game#assignTeams`, and `beginMatch`'s spawn loop must take the
+  exact cursor-walk path it always did -- both are load-bearing, provable
+  invariants, not just "should be fine."** Verified the same way the
+  sound-and-music round verified `Game#signal()`: a `pacing-sweep.mjs`
+  diff (timing column masked) between a pre-feature baseline and a
+  post-feature run in default (solo) mode has to be byte-identical. One
+  wrinkle this round that the sound round didn't hit: **diff the
+  isolated effect of each risky commit against its own immediate parent,
+  not just the very first baseline** -- a raw pre-teams-vs-final diff
+  legitimately was NOT clean, because the boat/nuke bug fix (a real,
+  intentional behavior change for solo/allied matches too, once bots stop
+  wasting boats/nukes on allies) landed in between. Isolating the spawn-
+  clustering commit specifically (a throwaway `git worktree add` at its
+  parent commit, pacing-sweep there, diff against the child) is what
+  actually proved *that* commit alone introduced zero drift, rather than
+  the raw baseline diff, which would have looked "wrong" for an entirely
+  unrelated, correct reason.
+- **Tribes get `teamId = null`, never `-1`.** `-1` already means `NEUTRAL`
+  elsewhere in `game.js`, and worse, `-1 === -1` would make `isFriendly`
+  treat *every pair of tribes* as friendly, silently disabling
+  tribe-vs-tribe warfare -- nearly all the fighting tribes ever do. Any
+  future "who's on nobody's team" sentinel needs its own value, not a
+  borrowed one that already means something else.
+- **A hand-painted headless test that gives the "surviving" actors zero
+  tiles hits the exact same self-elimination trap as an unparked human**
+  (the sound-and-music lesson two entries up), just with a different
+  victim. `tools/tests/team-games-test.mjs`'s first draft of the
+  last-team-standing case set `teamId`/`alive` correctly on its two
+  "winning" players but never gave them any actual land via `rect()` --
+  `#checkEliminations` doesn't care who a nation *is*, only whether
+  `tiles.size === 0`, so both intended survivors got "eliminated" at
+  tick 10 right alongside everyone the test meant to kill off, and the
+  match ended with no winner instead of the intended team victory. The
+  general shape: any hand-painted actor a test expects to still be alive
+  by the time it inspects `game.state`/`game.winner` needs real,
+  non-zero territory, not just the right flags set on it.
+- **`#checkEliminations()` running before `#checkVictory()` in the same
+  tick means a human's own elimination can pre-empt crediting their
+  team's simultaneous win.** `#endMatch`'s `if (this.state === 'over')
+  return;` guard means whichever of the two fires first in a given
+  10-tick check wins outright -- eliminations always run first, so if the
+  human's own tiles hit zero in the identical tick their team's combined
+  land share crosses the line, the match ends "Eliminated," not
+  "Victory," even though the team objectively won. This is real but
+  narrow (it needs both events to land in the same ~1-second check
+  window), and reordering the two checks to fix it was rejected: running
+  victory first would make the *existing*, solo-only "last player
+  standing" check up to one interval late relative to today (a player
+  who hits zero tiles this tick would still count as `alive` until
+  `#checkEliminations` catches up), which is exactly the kind of
+  solo-mode drift this whole feature was built to avoid introducing. Left
+  as a known, named limitation rather than a "fix" that would have cost
+  more than it was worth -- see Known open items below.
 
 ## How to verify a change
 
@@ -841,3 +927,38 @@ Full details, including what each test actually checks, are in
   actual autoplay-unlock experience on iOS Safari specifically (this
   project's PWA target), since Playwright's Chromium is the only browser
   this session can drive.
+- **Team games are verified mechanically -- every legality/victory/
+  rendering rule checked deterministically -- but the actual feel of
+  playing on a team has not been played by a human.** Whether spawn
+  clustering (`TEAM_SPAWN_RADIUS = 45`) puts teammates a comfortable
+  distance apart, whether the round-to-nearest team-size algorithm
+  produces splits that feel fair in practice (a Small/Quads match is a
+  5-vs-4, named honestly in the README but not human-judged for whether
+  it actually plays fair), and whether the border-merge + leaderboard
+  letter + map-glyph combination is actually enough for a team's
+  territory to read clearly at a glance mid-match are all open questions
+  a real playtest would answer, not this session's own tests.
+- **A known, narrow gap: a human eliminated in the exact same tick their
+  team's combined land share crosses the win line sees "Eliminated," not
+  "Victory."** `#checkEliminations()` runs before `#checkVictory()` every
+  10 ticks, and `#endMatch`'s `state === 'over'` guard means whichever
+  fires first wins outright -- see the load-bearing-lessons entry above
+  for why reordering the two checks was rejected (it would make the
+  *existing*, solo-only last-player-standing check up to one interval
+  late, which is exactly the kind of solo-mode drift this feature was
+  built to avoid). This needs both events landing in the same ~1-second
+  window to trigger at all, so it is expected to be rare, but a genuine
+  fix -- likely having `#checkEliminations` check whether the eliminated
+  player's own team would already satisfy a victory condition before
+  calling `#endMatch(null)` for them specifically -- is a real, scoped
+  follow-up if it turns out to matter in practice.
+- **Also named but deliberately deferred this round** (not started, not
+  forgotten): teammates do not get the alliance trade bonus
+  (`TRADE_ALLY_BONUS`) `refreshTrade` still gates on `diplomacy.areAllied`
+  specifically, not `isFriendly` -- extending it is a real economy change
+  with no pacing evidence behind it yet; the leaderboard has no
+  team-grouped ordering or per-team subtotal row, `standings()` still
+  sorts purely by individual land share; there is no HUD readout of a
+  team's *combined* land share (only each member's own, same as before);
+  and the spawn banner doesn't name who the human's teammates are, only
+  the leaderboard does, after the fact.

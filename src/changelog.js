@@ -14,7 +14,6 @@ export const UPCOMING = [
   'Better UI',
   'Multiplayer',
   'Local multiplayer',
-  'Duo, trio and team games',
 ];
 
 export const CHANGELOG = [
