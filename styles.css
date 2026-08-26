@@ -381,7 +381,14 @@ html, body {
    keep their exact widths, so a row can never reflow under a finger (see
    the DOM-churn tap-loss lesson in HANDOFF.md). */
 .lb-row.is-tribe .lb-name { font-style: italic; color: var(--ink-dim); }
+/* A permanent teammate, not a negotiated ally -- a distinct wash and its
+   own accent on the team letter, same "never reflow" discipline as the
+   traitor tag below. */
+.lb-row.is-teammate { background: rgba(124, 224, 163, 0.1); }
+.lb-row.is-teammate .lb-team { color: var(--accent); }
 .lb-swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.lb-team { font-size: 10px; font-weight: 700; flex: none; width: 12px; text-align: center; color: var(--ink-dim); }
+.lb-team.is-empty { visibility: hidden; }
 .lb-name {
   flex: 1;
   min-width: 0;
