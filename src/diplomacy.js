@@ -52,6 +52,11 @@ export class Diplomacy {
     const to = this.game.players[toId];
     if (!from?.alive || !to?.alive) return false;
     if (this.areAllied(fromId, toId)) return false;
+    // A team is already permanently friendly -- there is nothing a real
+    // alliance would add, and offering one reads as nonsensical. Covers
+    // both the AI's own propose-candidate filter and a human clicking
+    // Ally on a teammate, in one place.
+    if (from.teamId !== null && from.teamId === to.teamId) return false;
     if (this.pendingBetween(fromId, toId)) return false;
     return true;
   }
