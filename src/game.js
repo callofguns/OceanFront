@@ -295,30 +295,112 @@ export class Game {
 
   // ------------------------------------------------------------- spawning ---
 
-  /** Place the human at `tile`, scatter the bots, and start the match. */
+  /** Place the human at `tile`, scatter the bots (teammates clustered
+   *  together where possible), and start the match. */
   beginMatch(humanTile) {
     const used = [humanTile];
+    // Which side each used tile belongs to, so a teammate may legitimately
+    // settle right next door while everyone else is still kept at arm's
+    // length. Keyed by teamKeyOf, so in a solo match every entry is
+    // unique and this changes nothing about who ends up where.
+    const sideOf = new Map([[humanTile, this.teamKeyOf(this.human.id)]]);
     this.#claimStart(this.human, humanTile);
 
     const pool = this.spawnCandidates.filter((t) => this.map.dist(t, humanTile) > 18);
     let cursor = 0;
-    for (const p of this.players) {
-      if (p.isHuman) continue;
-      let tile = pool[cursor++];
-      while (tile !== undefined && used.some((u) => this.map.dist(u, tile) < 14)) {
-        tile = pool[cursor++];
+    const humanKey = this.teamKeyOf(this.human.id);
+
+    for (const group of this.#spawnGroups()) {
+      // The team's anchor is its first placed homeland. The human's team
+      // is anchored on the tile the player picked themselves, which is
+      // what makes a duo partner spawn beside you rather than across the
+      // map. Every other group's anchor is whichever of its own members
+      // gets placed first.
+      let anchor = group.key === humanKey ? humanTile : null;
+
+      for (const p of group.members) {
+        let tile = anchor !== null ? this.#nearestFreeSpawn(anchor, group.key, used, sideOf) : undefined;
+        if (tile === undefined) {
+          // Unchanged from before teams existed, and the only path a solo
+          // match ever takes: walk the pool for the next candidate far
+          // enough from everything already placed.
+          tile = pool[cursor++];
+          while (tile !== undefined && used.some((u) => this.map.dist(u, tile) < 14)) {
+            tile = pool[cursor++];
+          }
+        }
+        if (tile === undefined) tile = this.#randomFreeLand();
+        if (tile === undefined) {
+          p.alive = false;
+          continue;
+        }
+        used.push(tile);
+        sideOf.set(tile, group.key);
+        if (anchor === null) anchor = tile;
+        this.#claimStart(p, tile);
       }
-      if (tile === undefined) tile = this.#randomFreeLand();
-      if (tile === undefined) {
-        p.alive = false;
-        continue;
-      }
-      used.push(tile);
-      this.#claimStart(p, tile);
     }
 
     this.state = 'playing';
     this.log(`${this.human.name} has claimed a homeland. The expansion begins.`, this.human.color);
+  }
+
+  /**
+   * Everyone who needs a spawn, bucketed by side (teamKeyOf), in
+   * first-appearance order over this.players -- so nations are still
+   * placed before tribes, exactly as the flat loop used to be. The human
+   * is excluded from `members` (they already have their tile) but their
+   * side still appears, first, so their teammates get first pick of the
+   * ground around them.
+   *
+   * In a solo match every side is a single player and every group but the
+   * human's has exactly one member -- which is what makes beginMatch
+   * above take the identical path it always did.
+   */
+  #spawnGroups() {
+    const groups = new Map();
+    for (const p of this.players) {
+      const key = this.teamKeyOf(p.id);
+      let g = groups.get(key);
+      if (!g) {
+        g = { key, members: [] };
+        groups.set(key, g);
+      }
+      if (!p.isHuman) g.members.push(p);
+    }
+    return [...groups.values()];
+  }
+
+  /**
+   * The closest unused spawn candidate to a team's anchor that is still
+   * clear of every OTHER side's homeland. The ordinary <14-tile crowding
+   * guard is deliberately not applied against the team's own tiles --
+   * teammates settling within a few tiles of each other is the entire
+   * point -- but it is enforced in full against everybody else, so a team
+   * clusters without being able to crowd a rival off their ground.
+   * Returns undefined if nothing inside TEAM_SPAWN_RADIUS qualifies, in
+   * which case the caller falls back to ordinary scattered placement.
+   */
+  #nearestFreeSpawn(anchor, key, used, sideOf) {
+    let best;
+    let bestDist = TEAM_SPAWN_RADIUS;
+    for (const tile of this.spawnCandidates) {
+      if (sideOf.has(tile)) continue; // already handed out
+      const d = this.map.dist(anchor, tile);
+      if (d >= bestDist) continue;
+      let blocked = false;
+      for (const u of used) {
+        if (sideOf.get(u) === key) continue; // our own homeland -- fine to sit beside
+        if (this.map.dist(u, tile) < 14) {
+          blocked = true;
+          break;
+        }
+      }
+      if (blocked) continue;
+      bestDist = d;
+      best = tile;
+    }
+    return best;
   }
 
   #randomFreeLand() {
