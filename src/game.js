@@ -1394,12 +1394,69 @@ export class Game {
         return;
       }
     }
+
+    // Team wins, checked only once both solo checks above have declined --
+    // a lone nation crossing the threshold still ends the match on its own
+    // terms, it just credits its team too (see #endMatch's default team).
+    // Solo matches never reach past this line: every team is a singleton,
+    // so neither loop below can ever find more than one member.
+    if (this.teamSize < 2) return;
+
+    const byTeam = new Map();
+    for (const p of alive) {
+      if (p.teamId === null) continue; // tribes are on no team
+      const list = byTeam.get(p.teamId);
+      if (list) list.push(p);
+      else byTeam.set(p.teamId, [p]);
+    }
+
+    // Last team standing. Deliberately as strict as the alive.length === 1
+    // check above -- surviving tribes block it exactly the way they block
+    // a solo last-nation-standing win, so teams and solos win on equal
+    // terms.
+    if (byTeam.size === 1) {
+      const [, members] = [...byTeam.entries()][0];
+      if (members.length > 1 && alive.length === members.length) {
+        this.#endMatch(this.#teamLeader(members));
+        return;
+      }
+    }
+
+    // Combined land share -- the same threshold one nation has to clear
+    // alone, measured across the whole team.
+    for (const members of byTeam.values()) {
+      if (members.length < 2) continue;
+      let tiles = 0;
+      for (const m of members) tiles += m.tiles.size;
+      if (tiles / this.map.landCount >= VICTORY_LAND_SHARE) {
+        this.#endMatch(this.#teamLeader(members));
+        return;
+      }
+    }
   }
 
-  #endMatch(winner) {
+  /** Whoever on a winning team personally holds the most land -- `winner`
+   *  stays a single Player, the contract src/ui.js's showEndScreen and
+   *  tools/simulate.js both already depend on. */
+  #teamLeader(members) {
+    let best = members[0];
+    for (const m of members) if (m.tiles.size > best.tiles.size) best = m;
+    return best;
+  }
+
+  /** `winningTeamId` defaults to the winner's own team, so the two
+   *  pre-existing solo-win checks above credit a teammate's landslide to
+   *  the whole team without either of them needing to change. Inert in
+   *  solo: a solo player's team is only ever themselves, so
+   *  `winningTeamId === human.teamId` is true only when `winner ===
+   *  human` already was. Stays null when there is no winner (the human
+   *  was eliminated or annexed -- #checkEliminations/#annex both call
+   *  this with `null`). */
+  #endMatch(winner, winningTeamId = winner?.teamId ?? null) {
     if (this.state === 'over') return;
     this.state = 'over';
     this.winner = winner;
+    this.winningTeamId = winningTeamId;
   }
 
   #updateCentroid(player) {
