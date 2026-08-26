@@ -35,6 +35,7 @@ const BROWSER_TESTS = [
   'pause-menu-test.mjs',
   'zoom-and-labels-test.mjs',
   'sound-test.mjs',
+  'team-games-test.mjs',
 ];
 
 function run(script, env = {}) {
