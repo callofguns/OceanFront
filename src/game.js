@@ -530,6 +530,17 @@ export class Game {
     return this.players.filter((p) => p.teamId === teamId);
   }
 
+  /** Why an attack on a friend was refused, in the acting player's own
+   *  words -- a team is permanent, an alliance can be torn up, so the two
+   *  read differently. */
+  #friendlyReason(actorId, otherId) {
+    const actor = this.players[actorId];
+    const other = this.players[otherId];
+    return other.teamId !== null && other.teamId === actor.teamId
+      ? `${other.name} is on your team.`
+      : `You are allied with ${other.name}. Break the pact first.`;
+  }
+
   /** Does `attacker` share a land border with `targetId`? */
   borders(attacker, targetId) {
     const nb = this._nb;
@@ -1088,6 +1099,13 @@ export class Game {
     if (!this.map.isLand(targetTile) || this.owner[targetTile] === player.id) {
       return { ok: false, reason: 'Pick enemy or unclaimed land across the water.' };
     }
+    // launchAttack has always had this guard; a naval landing never did --
+    // a real gap, not just a teams-mode one, since it let a boat seize a
+    // sworn ally's tile outright.
+    const targetId = this.owner[targetTile];
+    if (targetId >= 0 && this.isFriendly(player.id, targetId)) {
+      return { ok: false, reason: this.#friendlyReason(player.id, targetId) };
+    }
     if (player.troops < BOAT_MIN_TROOPS) {
       return { ok: false, reason: 'Not enough troops to crew a landing force.' };
     }
@@ -1116,6 +1134,20 @@ export class Game {
     boat.done = true;
     const tile = boat.targetTile;
     const defenderId = this.owner[tile];
+
+    // A legally launched boat can still arrive at a tile that became
+    // friendly mid-voyage -- an alliance signed while it was at sea, or a
+    // teammate taking the tile first. Stand it down rather than throwing
+    // it back, mirroring what already happens to a live land attack when
+    // the two sides sign a pact mid-fight (see cancelAttacksBetween).
+    if (defenderId >= 0 && this.isFriendly(boat.ownerId, defenderId)) {
+      player.troops += boat.troops * RETREAT_REFUND;
+      if (player.isHuman) {
+        this.log(`Landing force stood down — ${this.players[defenderId].name} holds that shore.`, player.color);
+      }
+      return;
+    }
+
     const { attackerLoss, defenderLoss } = this.attackLogic(tile, defenderId, boat.troops, boat.ownerId);
 
     if (boat.troops <= attackerLoss) {
@@ -1147,6 +1179,16 @@ export class Game {
     if (player.gold < NUKE_COST) return { ok: false, reason: 'Not enough gold for a warhead.' };
     const silo = player.buildings.find((b) => b.key === 'silo');
     if (!silo) return { ok: false, reason: 'You need a Missile Silo first.' };
+
+    // Scorching your OWN ground stays legal (it always has been) -- this
+    // only stops a warhead aimed at a teammate or a sworn ally, a guard
+    // launchNuke never had at all. Only the aimed tile is checked, not the
+    // whole blast radius: fallout doesn't respect treaties, same as
+    // launchAttack guards the target and not the frontier it might touch.
+    const targetId = this.owner[targetTile];
+    if (targetId >= 0 && targetId !== player.id && this.isFriendly(player.id, targetId)) {
+      return { ok: false, reason: this.#friendlyReason(player.id, targetId) };
+    }
 
     player.gold -= NUKE_COST;
     this.missiles.push(new Missile(player.id, silo.tile, targetTile, this.map));
