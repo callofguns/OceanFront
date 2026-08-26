@@ -61,6 +61,9 @@ import {
   TRIBE_DEFENSE_DISCOUNT,
   SPAWN_POOL_OVERSHOOT,
   SPAWN_POOL_MARGIN,
+  TEAM_MODES,
+  DEFAULT_TEAM_MODE,
+  TEAM_SPAWN_RADIUS,
 } from './config.js';
 import { generateMap, buildAuthoredMap, findSpawnPoints } from './map.js';
 import { makeRng, shuffle } from './rng.js';
@@ -114,7 +117,7 @@ class Missile {
 
 export class Game {
   constructor(options) {
-    const { preset, seed, playerName, playerColor, difficulty } = options;
+    const { preset, seed, playerName, playerColor, difficulty, teamMode } = options;
     this.seed = seed >>> 0;
     this.rng = makeRng(this.seed ^ 0x9e3779b9);
     // A preset carrying `authored` plays a hand-drawn map (src/maps/) at a
@@ -126,6 +129,8 @@ export class Game {
       : generateMap(preset.w, preset.h, this.seed);
     this.preset = preset;
     this.difficulty = DIFFICULTIES[difficulty] ? difficulty : DEFAULT_DIFFICULTY;
+    this.teamMode = TEAM_MODES[teamMode] ? teamMode : DEFAULT_TEAM_MODE;
+    this.teamSize = TEAM_MODES[this.teamMode].teamSize;
 
     this.owner = new Int16Array(this.map.size).fill(NEUTRAL);
     this.buildingAt = new Map();
@@ -149,6 +154,9 @@ export class Game {
     this.tickCount = 0;
     this.state = 'spawn'; // 'spawn' | 'playing' | 'over'
     this.winner = null;
+    /** Which team crossed the win condition, set alongside `winner` by
+     *  #endMatch. In a solo match this is inert -- see #endMatch. */
+    this.winningTeamId = null;
     this.dirty = true;
 
     // Scratch buffers reused by the water pathfinder.
@@ -166,6 +174,7 @@ export class Game {
     this._floodQueue = new Int32Array(this.map.size);
 
     this.#createPlayers(preset, playerName, playerColor);
+    this.#assignTeams();
     this.diplomacy = new Diplomacy(this);
     this.spawnCandidates = findSpawnPoints(
       this.map,
@@ -213,6 +222,75 @@ export class Game {
       tribe.ai = new TribeController(tribe, this.rng);
       this.players.push(tribe);
     }
+  }
+
+  /**
+   * Fixed team affiliation for every nation, decided once here and never
+   * touched again -- teams cannot be joined, left or betrayed. Tribes are
+   * never on a team at any size (teamId stays null, which is what
+   * Game#isFriendly and the renderer's teamKeyOf key off to make sure two
+   * different tribes are never friendly with each other).
+   *
+   * The solo branch is load-bearing: it must consume ZERO draws from
+   * this.rng, so a solo match's spawn points, nation names and every AI
+   * roll land on exactly the numbers they did before teams existed.
+   * Verified by a pacing-sweep diff against a pre-feature baseline (see
+   * HANDOFF.md). Do not add an rng draw to it, and do not "simplify" it
+   * into the shuffled path below -- they look similar but the shuffled
+   * path is not free.
+   */
+  #assignTeams() {
+    const ids = [];
+    for (const p of this.players) {
+      if (p.isTribe) {
+        p.teamId = null;
+        continue;
+      }
+      if (this.teamSize <= 1) {
+        p.teamId = p.id;
+        continue;
+      }
+      ids.push(p.id);
+    }
+    if (this.teamSize <= 1) {
+      this.teams = this.players.filter((p) => !p.isTribe).map((p) => [p.id]);
+      return;
+    }
+
+    // Round to the nearest whole number of teams rather than flooring, then
+    // deal round-robin over a shuffled order. preset.bots is always even,
+    // so the nation count is always odd and some rounding is unavoidable --
+    // the merge pass below is what keeps that from producing a team of one.
+    const numTeams = Math.max(1, Math.round(ids.length / this.teamSize));
+    shuffle(this.rng, ids); // the SEEDED rng -- never Math.random(), or
+                            // Restart Match would reshuffle the teams
+    const members = Array.from({ length: numTeams }, () => []);
+    ids.forEach((id, index) => members[index % numTeams].push(id));
+
+    // Rounding can leave one team short (9 nations in duos rounds to 5
+    // teams: [2,2,2,2,1]). Fold any one-member team into the smallest
+    // other team -- a "team" of one would silently play as a solo nation
+    // inside a team match, which is the one outcome this mode must not
+    // produce.
+    for (;;) {
+      const lonely = members.findIndex((m) => m.length === 1);
+      if (lonely === -1) break;
+      let host = -1;
+      for (let t = 0; t < members.length; t++) {
+        if (t === lonely || members[t].length === 0) continue;
+        if (host === -1 || members[t].length < members[host].length) host = t;
+      }
+      if (host === -1) break; // only one team exists at all -- nothing to merge into
+      members[host].push(...members[lonely]);
+      members[lonely] = [];
+    }
+
+    // Compact away the emptied slots so team ids stay 0..n-1 and contiguous
+    // -- the leaderboard indicator labels teams A, B, C off this index.
+    this.teams = members.filter((m) => m.length > 0);
+    this.teams.forEach((m, teamId) => {
+      for (const id of m) this.players[id].teamId = teamId;
+    });
   }
 
   // ------------------------------------------------------------- spawning ---
@@ -405,6 +483,53 @@ export class Game {
     return { attackerLoss, defenderLoss: defender.density * DEFENDER_LOSS, tilesPerTickUsed };
   }
 
+  /**
+   * Two players who may never fight: the same nation, two members of one
+   * team, or two nations bound by an alliance. This is the single legality
+   * gate every attack path funnels through -- land attacks, annexation,
+   * naval landings, missiles, and every AI target pool -- so a team pact
+   * and a diplomatic one are enforced by exactly one rule.
+   *
+   * Diplomacy's own bookkeeping deliberately does NOT go through here: the
+   * two-ally cap, betrayal eligibility and Diplomacy#aiWouldAccept's
+   * reputation math all keep reading `player.allies` directly, because a
+   * teammate is never added to `.allies` -- a team is not a pact you
+   * signed, and a trio's members should each still be free to sign two
+   * real alliances of their own.
+   *
+   * NEUTRAL (-1) is nobody's friend, so unclaimed land stays attackable.
+   */
+  isFriendly(aId, bId) {
+    if (aId < 0 || bId < 0) return false;
+    if (aId === bId) return true;
+    const a = this.players[aId];
+    const b = this.players[bId];
+    if (!a || !b) return false;
+    if (a.teamId !== null && a.teamId === b.teamId) return true;
+    return this.diplomacy.areAllied(aId, bId);
+  }
+
+  /**
+   * A single comparable token for "who counts as the same side" -- a team
+   * id for a nation, a value in its own private negative namespace for a
+   * tribe (which is on no team and must still read as distinct from every
+   * other tribe). In a solo match this is injective over player ids, which
+   * is what makes the renderer's border test provably identical to the
+   * pre-teams one there.
+   */
+  teamKeyOf(playerId) {
+    const p = this.players[playerId];
+    if (!p) return NaN;
+    return p.teamId === null ? -1 - p.id : p.teamId;
+  }
+
+  /** Every nation on a team, alive or not, in player order. Empty for
+   *  `null`/`undefined` (a tribe has no team). */
+  teamMembers(teamId) {
+    if (teamId === null || teamId === undefined) return [];
+    return this.players.filter((p) => p.teamId === teamId);
+  }
+
   /** Does `attacker` share a land border with `targetId`? */
   borders(attacker, targetId) {
     const nb = this._nb;
@@ -429,9 +554,9 @@ export class Game {
    */
   launchAttack(attacker, targetId, troops) {
     if (!attacker.alive || targetId === attacker.id) return null;
-    // Every attack in the game funnels through here, so the alliance check
-    // only needs to exist once.
-    if (targetId >= 0 && this.diplomacy.areAllied(attacker.id, targetId)) return null;
+    // Every attack in the game funnels through here, so the friendliness
+    // check only needs to exist once. Covers a real alliance AND a team.
+    if (targetId >= 0 && this.isFriendly(attacker.id, targetId)) return null;
     const committed = attacker.withdrawTroops(troops);
     if (committed < ATTACK_MIN_TROOPS) {
       attacker.troops += committed;
@@ -812,9 +937,10 @@ export class Game {
       }
 
       if (hasCoast || captor < 0) continue;
-      // Treaties hold here for the same reason they hold in launchAttack --
-      // you cannot quietly swallow someone you have sworn not to attack.
-      if (this.diplomacy.areAllied(victim.id, captor)) continue;
+      // Friendship holds here for the same reason it holds in launchAttack
+      // -- you cannot quietly swallow a teammate or someone you have sworn
+      // not to attack.
+      if (this.isFriendly(victim.id, captor)) continue;
 
       const conqueror = this.players[captor];
       if (conqueror?.alive) this.#annex(conqueror, victim);
