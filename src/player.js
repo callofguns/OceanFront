@@ -41,6 +41,14 @@ export class Player {
 
     /** Ids of nations we have a non-aggression pact with. */
     this.allies = new Set();
+    /** Fixed team affiliation, decided once at Game construction
+     *  (Game#assignTeams) and never changed again -- there is no way to
+     *  leave or betray a team. Kept deliberately separate from `allies`
+     *  above, which is the opposite kind of thing: a negotiable, breakable
+     *  pact with its own two-ally cap. `null` means "on no team at all",
+     *  which is always and only a tribe; in a solo match every nation gets
+     *  its own id as its teamId, so it is its own team of one. */
+    this.teamId = null;
     /** Rises on betrayal, decays over time; gates future alliance offers. */
     this.traitorScore = 0;
     /** Gold per second from sea trade, recomputed by the trade graph. */
